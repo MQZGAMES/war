@@ -7,8 +7,9 @@
    ================================================================ */
 import { KINDS, POCAO, type VocKey } from "./data";
 import { avisoDe, fx } from "./fx";
-import { BASES, BASES_EQUIP, BASES_LOJA, COFRE_N, MOCHILA_N, NIVEL_MAX, PESO, PRECO_POCAO, RARO_COR, RARO_NOME, RARO_PRECO, SLOTS, STAT_NOME, type StatKey } from "./itemsData";
+import { BASES, BASES_EQUIP, BASES_LOJA, COFRE_N, LOJA_MAX_K, MOCHILA_N, NIVEL_MAX, PESO, PRECO_HP, PRECO_MP, PRECO_POCAO, precoPocao, RARO_COR, RARO_NOME, RARO_PRECO, SLOTS, STAT_NOME, type StatKey } from "./itemsData";
 import { pzAtiva } from "./pk";
+import { iaAnunciar, iaComprarMercado } from "./mercado";
 import { clamp, rnd } from "./rng";
 import { G } from "./state";
 import { itemStat, recalcular } from "./stats";
@@ -182,9 +183,9 @@ export function pagar(u: Unit, v: number) {
   return true;
 }
 export function comprarPocoes(u: Unit, tipo: "hp" | "mp", n: number) {
-  const b = tipo === "hp" ? "pvida" : "pmana";
-  n = Math.min(n, espacoPocao(u, b), Math.floor(saldo(u) / PRECO_POCAO));
-  if (n <= 0 || !pagar(u, n * PRECO_POCAO)) return 0;
+  const b = tipo === "hp" ? "pvida" : "pmana", p = precoPocao(tipo);
+  n = Math.min(n, espacoPocao(u, b), Math.floor(saldo(u) / p));
+  if (n <= 0 || !pagar(u, n * p)) return 0;
   darItem(u, { b, n });
   return n;
 }
@@ -240,7 +241,7 @@ export function melhorDaCasa(u: Unit, s: SlotKey, verba: number) {
   for (const b of BASES_LOJA) {
     const B = BASES[b];
     if (B.s !== s || (B.voc && B.voc.indexOf(u.kind as VocKey) < 0)) continue;
-    for (let k = 1; k <= NIVEL_MAX; k++) {
+    for (let k = 1; k <= LOJA_MAX_K; k++) {
       ITEM_TMP.b = b; ITEM_TMP.k = k;
       if (precoItem(ITEM_TMP) > verba) break;
       const g = ganhoDe(u, ITEM_TMP);
@@ -326,21 +327,23 @@ export function iaCofre(u: Unit) {
   guardarNoCofre(u);
   if (u.ouro > 80) depositarOuro(u, u.ouro - 80);
 }
-export function pocaoAlvo(u: Unit) { return clamp(12 + u.lvl * 2, 12, 70); }
+/* estoque que a IA quer levar: cresce com o nível, sem passar de 50 */
+export function pocaoAlvo(u: Unit) { return clamp(8 + Math.round(u.lvl * 1.5), 8, 50); }
 export function custoPocoes(u: Unit) {
   const a = pocaoAlvo(u), conj = u.maxMp > 0 && u.kind !== "knight";
-  return PRECO_POCAO * (Math.max(0, a - u.potHp) + (conj ? Math.max(0, a - u.potMp) : 0));
+  return PRECO_HP * Math.max(0, a - u.potHp) + (conj ? PRECO_MP * Math.max(0, a - u.potMp) : 0);
 }
-export function reservaIA(u: Unit) { return custoPocoes(u) + PRECO_POCAO * 10; }
+export function reservaIA(u: Unit) { return custoPocoes(u) + PRECO_HP * 6; }
 export function precisaNpc(u: Unit, id: string) {
   if (id === "feiticeiro") {
     const conj = u.maxMp > 0 && u.kind !== "knight", a = pocaoAlvo(u);
-    return saldo(u) >= PRECO_POCAO && (u.potHp < a || (conj && u.potMp < a));
+    return saldo(u) >= PRECO_MP && (u.potHp < a || (conj && u.potMp < a));
   }
   if (id === "comerciante") {
     for (const it of u.mochila) if (it && !ehPocao(it) && !mantem(u, it)) return true;
     return temMelhoria(u, reservaIA(u));
   }
+  if (id === "ferreiro") return querForjar(u);
   if (u.ouro > 150) return true;
   for (const it of u.mochila) if (it && !ehPocao(it) && mantem(u, it)) return true;
   for (const s of SLOTS) if (!u.eqp[s] && reservaNoCofre(u, s) >= 0) return true;
@@ -348,7 +351,10 @@ export function precisaNpc(u: Unit, id: string) {
 }
 function iaComerciante(u: Unit) {
   autoEquipar(u);
+  /* o que tem valor vai para o mercado (rende mais que os 50% do balcão) */
+  for (let i = 0; i < u.mochila.length; i++) { const it = u.mochila[i]; if (it && !ehPocao(it) && !mantem(u, it)) iaAnunciar(u, i); }
   for (let i = 0; i < u.mochila.length; i++) { const it = u.mochila[i]; if (it && !mantem(u, it)) venderItem(u, i); }
+  iaComprarMercado(u);
   comprarMelhorias(u, reservaIA(u));
   for (let i = 0; i < u.mochila.length; i++) { const it = u.mochila[i]; if (it && !mantem(u, it)) venderItem(u, i); }
 }
@@ -357,10 +363,11 @@ function iaFeiticeiro(u: Unit) {
   const minMp = conj ? 8 : (u.maxMp ? 2 : 0);
   if (u.potHp < 8) comprarPocoes(u, "hp", 8 - u.potHp);
   if (u.potMp < minMp) comprarPocoes(u, "mp", minMp - u.potMp);
-  const alvo = pocaoAlvo(u), verba = Math.floor(saldo(u) * .7 / PRECO_POCAO);
+  const alvo = pocaoAlvo(u), verba = saldo(u) * .7;
   let hp = Math.max(0, alvo - u.potHp);
   let mp = conj ? Math.max(0, alvo - u.potMp) : 0;
-  if (hp + mp > verba) { const k = verba / (hp + mp); hp = Math.floor(hp * k); mp = Math.floor(mp * k); }
+  const custo = hp * PRECO_HP + mp * PRECO_MP;
+  if (custo > verba) { const k = verba / custo; hp = Math.floor(hp * k); mp = Math.floor(mp * k); }
   if (hp) comprarPocoes(u, "hp", hp);
   if (mp) comprarPocoes(u, "mp", mp);
 }
@@ -368,10 +375,71 @@ export function negociar(u: Unit, id: string) {
   if (pzAtiva(u)) return;
   if (id === "comerciante") iaComerciante(u);
   else if (id === "feiticeiro") iaFeiticeiro(u);
+  else if (id === "ferreiro") iaFerreiro(u);
   else iaCofre(u);
+}
+
+/* ============================================================
+   [SYSTEM: FORJA] o Ferreiro sobe o item um nível (+1 a +10).
+   Custo progressivo: 30% do preço do item no nível seguinte (a raridade
+   já encarece o preço). A chance cai a cada nível; do +6 em diante a
+   falha pode derrubar um nível. Épico é mais difícil de forjar.
+   ============================================================ */
+const CHANCE_FORJA = [.95, .9, .82, .72, .62, .52, .42, .33, .25];
+export function custoForja(it: Item) {
+  if (it.k >= NIVEL_MAX) return 0;
+  return Math.round(precoItem({ b: it.b, k: it.k + 1 }) * .3);
+}
+export function chanceForja(it: Item) {
+  if (it.k >= NIVEL_MAX) return 0;
+  return Math.max(.1, CHANCE_FORJA[it.k - 1] - (BASES[it.b].raro || 0) * .03);
+}
+export const riscoForja = (it: Item) => it.k >= 6 ? .5 : 0;
+export interface ResultadoForja { ok: boolean; caiu: boolean; custo: number }
+export function forjar(u: Unit, it: Item): ResultadoForja | null {
+  const custo = custoForja(it);
+  if (!custo || !pagar(u, custo)) return null;
+  if (rnd() < chanceForja(it)) { it.k++; recalcular(u); return { ok: true, caiu: false, custo }; }
+  const caiu = rnd() < riscoForja(it);
+  if (caiu) { it.k--; recalcular(u); }
+  return { ok: false, caiu, custo };
+}
+/* A IA forja só quando já não há o que comprar e sobra dinheiro além da
+   reserva de poções; o ambicioso arrisca níveis mais altos */
+function alvoForja(u: Unit, teto: number, verba: number) {
+  let melhor: Item | null = null, bs = -1e9;
+  for (const s of SLOTS) {
+    const it = u.eqp[s];
+    if (!it || it.k >= teto) continue;
+    const c = custoForja(it);
+    if (!c || c > verba) continue;
+    const ganho = valorPara(u, { b: it.b, k: it.k + 1 }) - valorPara(u, it);
+    const sc = ganho * chanceForja(it) / c * 1000;
+    if (sc > bs) { bs = sc; melhor = it; }
+  }
+  return melhor;
+}
+function tetoForja(u: Unit) {
+  const w = u.w;
+  const ambicao = w ? w.ganancia : 1;
+  return ambicao > 1.15 ? NIVEL_MAX : ambicao > .85 ? 8 : 6;
+}
+export function querForjar(u: Unit) {
+  const verba = saldo(u) - reservaIA(u) - 200;
+  return verba > 0 && !temMelhoria(u, reservaIA(u)) && !!alvoForja(u, tetoForja(u), verba);
+}
+function iaFerreiro(u: Unit) {
+  for (let n = 0; n < 6; n++) {
+    const verba = saldo(u) - reservaIA(u) - 200;
+    const it = alvoForja(u, tetoForja(u), verba);
+    if (!it) return;
+    const r = forjar(u, it);
+    if (!r) return;
+    avisoDe(u, (r.ok ? "Forjou " : "A forja falhou: ") + nomeItem(it) + (r.caiu ? " (caiu um nível)" : ""), r.ok ? "#e0bd63" : "#c96a5a");
+  }
 }
 export function semFrasco(u: Unit) {
   const precisaMana = u.maxMp > 0 && u.kind !== "knight";
   return u.potHp <= 0 || (precisaMana && u.potMp <= 0);
 }
-export { MOCHILA_N, COFRE_N, PRECO_POCAO, NIVEL_MAX, SLOTS };
+export { MOCHILA_N, COFRE_N, PRECO_POCAO, PRECO_HP, PRECO_MP, precoPocao, NIVEL_MAX, SLOTS };

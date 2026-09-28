@@ -128,8 +128,8 @@ function arco(m: Montador, maoX: number, maoY: number, madeira: THREE.Color, cor
 function cajado(m: Montador, x: number, sh: number, bracoL: number, madeira: THREE.Color, orbe: THREE.Color, druida: boolean) {
   /* o cajado passa pela mão, à frente do braço, preso ao osso da mão
      direita (o mesmo da flecha): a animação o mantém de pé */
-  const mao = sh - bracoL - .02, zc = .09;
-  x -= .012;
+  const mao = sh - bracoL - .02, zc = .1;
+  x -= .035;
   m.add(P.cil(.026, .03, 1.15, 6), [x, mao + .2, zc], madeira, H.FLECHA);
   m.add(P.cil(.034, .034, .07, 6), [x, mao, zc], "#3a2a1a", H.FLECHA);
   const topo = mao + .78;
@@ -246,6 +246,16 @@ export function modeloNpc(id: string, cor: { c: string; lo: string; hi: string }
     m.add(P.caixa(p.cabR * .9, p.cabR * .18, .06), [0, b.hy - p.cabR * .3, p.cabR * .92], "#6a4428", H.HEAD);
     m.add(P.cil(.02, .02, .3, 5), [-p.ombro, b.sh - p.bracoL - .03, .1], "#6a4428", H.ARM_R, [Math.PI / 2, 0, 0]);
     m.add(P.caixa(.14, .08, .08), [-p.ombro, b.sh - p.bracoL - .03, .26], "#8e949a", H.ARM_R);
+  } else if (id === "ferreiro") {
+    /* ferreiro: avental de couro, braços fortes, careca com barba e martelo */
+    const b = corpo(m, p, { pele, roupa: C("#6a4a34"), roupa2: C("#3a2a1c"), calca: C("#3a3230"), bota: C("#241c18"), cinto: C("#2a1e16") }, { barriga: 1.05, ombreira: pele });
+    m.add(P.caixa(p.troncoW * .95, p.troncoH * 1.25, .025), [0, b.hip + p.troncoH * .3, p.troncoD * .56], "#3a2a1c", H.TORSO);
+    m.add(P.cone(p.cabR * .62, .2, 6), [0, b.hy - p.cabR * .75, p.cabR * .5], "#6a3a1c", H.HEAD, [Math.PI + .25, 0, 0]);
+    m.add(P.caixa(p.cabR * 1.1, p.cabR * .15, .04), [0, b.hy + p.cabR * .35, p.cabR * .9], "#6a3a1c", H.HEAD);
+    const mao = b.sh - p.bracoL - .03;
+    m.add(P.cil(.022, .022, .3, 5), [-p.ombro, mao + .08, .06], "#5a3a22", H.ARM_R);
+    m.add(P.caixa(.14, .08, .08), [-p.ombro, mao + .24, .06], "#4a4a52", H.ARM_R);
+    void roupa;
   } else {
     const b = corpo(m, p, { pele, roupa: C("#26222a"), roupa2: C("#e8c35a"), calca: C("#1e1b22"), bota: C("#141216"), cinto: C("#141216") });
     m.add(P.caixa(.06, p.troncoH * .8, .02), [0, b.hip + p.troncoH * .5, p.troncoD * .55], "#efe6d2", H.TORSO);

@@ -9,7 +9,7 @@ export type SlotKey = "cab" | "amu" | "arm" | "arma" | "esc" | "cal" | "ane" | "
 export type Equip = Record<SlotKey, Item | null>;
 
 export interface Npc {
-  id: "feiticeiro" | "comerciante" | "banqueiro";
+  id: "feiticeiro" | "comerciante" | "banqueiro" | "ferreiro";
   nome: string; icone: string; placa: string;
   x: number; y: number; fa: number; cor: Paleta; bob: number;
 }
@@ -39,6 +39,8 @@ export interface WorldMind {
   compraLider?: boolean; reencontro?: number; puxa?: string;
   /* esconderijo enquanto espera a trava de PZ acabar, longe da cidade */
   escX?: number; escY?: number;
+  /* próxima vez que vale checar compras e forja */
+  lojaT?: number;
 }
 
 export interface Refil { fase: "isolar" | "rota" | "esperar" | "voltar"; i: number; rota: string[]; x: number; y: number; t: number }

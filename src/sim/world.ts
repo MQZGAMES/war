@@ -7,7 +7,7 @@
    ================================================================ */
 import { BEASTS, FAUNA, KINDS, ST, TEAMS, VERMELHA_N, type AtqModo, type KindKey } from "./data";
 import { avisoDe, fx, ui } from "./fx";
-import { darItem, negociar, novoItem, pocaoItem, precisaNpc, saldo, livres, PRECO_POCAO } from "./items";
+import { darItem, negociar, novoItem, pocaoItem, precisaNpc, querForjar, reservaIA, saldo, livres, temMelhoria, PRECO_HP } from "./items";
 import { KIT, BASES, COFRE_N, MOCHILA_N } from "./itemsData";
 import { CID_R, emPZ, nearestFree, npcDe, NPC_ALCANCE, portaoPara, QBUF, queryRadius } from "./map";
 import { pzAtiva } from "./pk";
@@ -19,6 +19,7 @@ import type { Bando, Party, Pt, Squad, Unit, Zona } from "./types";
 import { goTo, makeUnit, setState } from "./unit";
 import { unitThink, R_APOIO, R_FRENTE, R_FUNDO } from "./ai";
 import { caveiraRelogio } from "./pk";
+import { mercadoPasso } from "./mercado";
 
 /* ---------- modelos de ponto de caça por faixa (1..7) ---------- */
 export const ZONAS: { n: string; tier: number; sp: Partial<Record<KindKey, number>> }[] = [
@@ -521,7 +522,7 @@ function atualizaPerfil(u: Unit) {
   if (!w || u === G.ctrl || W.simTime < w.perfilT) return;
   w.perfilT = W.simTime + rr(20, 45);
   const antes = w.perfil;
-  const fraco = u.lvl <= 3 || u.hp < u.maxHp * .5 || (saldo(u) < PRECO_POCAO * 4 && u.potHp < 4);
+  const fraco = u.lvl <= 3 || u.hp < u.maxHp * .5 || (saldo(u) < PRECO_HP * 4 && u.potHp < 4);
   if (u.skull === "red") w.perfil = "todos";
   else if (u.injustas >= VERMELHA_N - 1 || fraco) w.perfil = "criaturas";
   else {
@@ -623,14 +624,21 @@ function revisaGrupos() {
 }
 
 /* ---------- [SYSTEM: AI_CICLO] caçar → cidade → caçar ---------- */
-const ORDEM_NPC = ["comerciante", "feiticeiro", "banqueiro"];
+const ORDEM_NPC = ["comerciante", "ferreiro", "feiticeiro", "banqueiro"];
 function precisaCidade(u: Unit) {
   const w = u.w!;
   if (w.goal === "cidade" && !w.pronto) return true;
   const conj = u.maxMp > 0 && u.kind !== "knight";
-  if (saldo(u) >= PRECO_POCAO * 8 && (u.potHp < 4 || (conj && u.potMp < 4))) return true;
+  if (saldo(u) >= PRECO_HP * 5 && (u.potHp < 4 || (conj && u.potMp < 4))) return true;
   if (livres(u.mochila) <= 1) return true;
-  return u.ouro > 1500 + u.lvl * 250;
+  if (u.ouro > 1500 + u.lvl * 250) return true;
+  /* dinheiro sobrando e algo para comprar ou forjar: vale a viagem */
+  if (W.simTime > (w.lojaT || 0)) {
+    w.lojaT = W.simTime + 45;
+    const reserva = reservaIA(u);
+    if (saldo(u) > reserva + 400 && (temMelhoria(u, reserva) || querForjar(u))) { w.lojaT = W.simTime + 180; return true; }
+  }
+  return false;
 }
 function irCidade(u: Unit) {
   const w = u.w!;
@@ -834,6 +842,7 @@ export function worldStep() {
   if (W.simTime < W.worldTick) return;
   W.worldTick = W.simTime + .5;
   conviteAutomatico();
+  mercadoPasso();
   let j = 0;
   const U = W.units;
   for (let i = 0; i < U.length; i++) { const u = U[i]; if (!u.remover || W.simTime - u.morteT < .5) U[j++] = u; }

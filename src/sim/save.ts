@@ -18,6 +18,8 @@ import { atalhosPadrao } from "./spells";
 import { FAUNA } from "./data";
 import { SETUP, TAMANHO_MEGA, prepararMundo, terminarInicio, assumir } from "./session";
 import { soltarPreso } from "./ai";
+import { MERCADO } from "./mercado";
+import type { Item } from "./types";
 
 /* ---------- preferências no aparelho ---------- */
 export const PREF_CHAVE = "mesaDeGuerra3d.pref", MUNDO_CHAVE = "mesaDeGuerra3d.mundo";
@@ -157,6 +159,7 @@ export function mundoDe() {
     comando: G.ctrl ? G.ctrl.id : 0,
     auto: { cura: { ...G.AUTO.cura }, ataque: { ...G.AUTO.ataque }, refil: { ...G.AUTO.refil }, equip: G.AUTO.equip, lider: G.AUTO.lider, agrupar: G.AUTO.agrupar },
     jogadores, grupos,
+    mercado: MERCADO.ofertas.map((o) => ({ item: o.item, preco: o.preco, vendedor: o.vendedor ? o.vendedor.id : 0, nome: o.nome, resta: Math.max(1, Math.round(o.ate - W.simTime)) })),
     local: 0, heroi: "", nivel: 0,
   };
 }
@@ -206,6 +209,12 @@ export function carregarMundo(m: any) {
     p.min = g.min || 1;
   }
   for (const u of W.units) if (!u.beast && !u.party) novaParty(u);
+  MERCADO.ofertas = [];
+  if (Array.isArray(m.mercado)) for (const o of m.mercado) {
+    const it = itemValido(o.item);
+    if (!it || ehPocao(it) || !(+o.preco > 0)) continue;
+    MERCADO.ofertas.push({ id: MERCADO.id++, item: it as Item, preco: Math.round(+o.preco), vendedor: porId.get(o.vendedor | 0) || null, nome: String(o.nome || "?").slice(0, 18), ate: W.simTime + clamp(+o.resta || 600, 1, 900) });
+  }
   if (Array.isArray(m.guerra)) for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) {
     const v = m.guerra[a] ? +m.guerra[a][b] : 0;
     W.guerra[a][b] = v > 0 ? W.simTime + v : 0;

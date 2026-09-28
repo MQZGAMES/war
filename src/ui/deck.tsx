@@ -7,12 +7,15 @@
 import { useRef, useState } from "preact/hooks";
 import { G, W } from "../sim/state";
 import { ATQ_DICA, ATQ_MODOS, ATRIB, CUSTO, PONTO, SPELLS, TEAMS, magiasDe, type AttrKey, type SpellKey, type VocKey } from "../sim/data";
-import { RARO_COR, RARO_NOME, BASES, BASES_LOJA, COFRE_N, MOCHILA_N, NIVEL_MAX, PRECO_POCAO, SLOT_NOME, STAT_LONGO, type StatKey } from "../sim/itemsData";
+import { RARO_COR, RARO_NOME, BASES, BASES_LOJA, COFRE_N, LOJA_MAX_K, MOCHILA_N, precoPocao, SLOT_NOME, STAT_LONGO, type StatKey } from "../sim/itemsData";
 import { recontar, comprarItem, comprarPocoes, corItem, depositarItem, depositarOuro, desequipar, descreveStats, ehPocao, equipar, equiparSeQuiser, espacoEm, espacoPocao, itemStat, livres, nomeItem, precoItem, precoVenda, sacarItem, sacarOuro, saldo, servePara, venderItem, vocNome, ITEM_TMP } from "../sim/items";
 import { beberPocao } from "../sim/spells";
 import { dmgFis, dmgMag, recalcular, somaGear, zerarBuild } from "../sim/stats";
 import { janelaNivel } from "../sim/player";
 import { deixarEquipe, EQUIPE_MAX, expulsar, TATICAS } from "../sim/world";
+import { chanceForja, custoForja, forjar, riscoForja } from "../sim/items";
+import { anunciar, cancelar, comprarOferta, MERCADO, minhasOfertas, OFERTAS_POR_VENDEDOR, precoSugerido, TAXA_MERCADO } from "../sim/mercado";
+import { SLOTS as SLOTS_EQ, NIVEL_MAX as NIVEL_MAX_F } from "../sim/itemsData";
 import { teamAlive } from "../sim/map";
 import { avisoDe, fx } from "../sim/fx";
 import { largar } from "../sim/session";
@@ -32,7 +35,7 @@ const ABAS: [Painel, string, string, string][] = [
   ["ataque", "Ataque", "espada", "Auto ataque"], ["equipe", "Equipe", "equipe", "Equipe"], ["ficha", "Ficha", "ficha", "Ficha"],
 ];
 const TIT: Record<string, string> = Object.fromEntries(ABAS.map((a) => [a[0], a[3]]));
-const NPC_TIT: Record<string, string> = { feiticeiro: "⚗ Feiticeiro", comerciante: "⚒ Comerciante", banqueiro: "◍ Banqueiro" };
+const NPC_TIT: Record<string, string> = { feiticeiro: "⚗ Feiticeiro", comerciante: "⚖ Comerciante", banqueiro: "◍ Banqueiro", ferreiro: "⚒ Ferreiro" };
 
 let itemSel: Sel = null;
 const rolagem: Record<string, number> = {};
@@ -421,7 +424,8 @@ function PNpc({ u, id }: { u: Unit; id: string }) {
     </>
   );
   if (id === "comerciante") {
-    const cab = <Seg itens={[["comprar", "Comprar"], ["vender", "Vender"]]} valor={subNpc} aoEscolher={(v) => { subNpc = v; itemSel = null; atualizar(); }} />;
+    const cab = <Seg itens={[["comprar", "Comprar"], ["vender", "Vender"], ["mercado", "Mercado"]]} valor={subNpc} aoEscolher={(v) => { subNpc = v; itemSel = null; atualizar(); }} />;
+    if (subNpc === "mercado") return <>{cab}<PMercado u={u} /></>;
     if (subNpc === "vender") {
       let tot = 0; for (const it of u.mochila) if (it && !ehPocao(it)) tot += precoVenda(it);
       return (
@@ -446,7 +450,7 @@ function PNpc({ u, id }: { u: Unit; id: string }) {
         <div class="cat" style={{ marginTop: "10px" }}>{CAT_LOJA.map(([s, r]) => <button key={s} aria-pressed={catLoja === s} onClick={() => { clique(); catLoja = s; baseLoja = ""; atualizar(); }}>{r}</button>)}</div>
         {!L.length ? <p class="dica">Nada deste tipo serve para {u.K.pt.toLowerCase()}.</p> : <>
           {L.length > 1 && <Seg itens={L.map((b) => [b, BASES[b].n] as [string, string])} valor={baseLoja} aoEscolher={(v) => { baseLoja = v; atualizar(); }} />}
-          {Array.from({ length: NIVEL_MAX }, (_, i) => i + 1).map((k) => {
+          {Array.from({ length: LOJA_MAX_K }, (_, i) => i + 1).map((k) => {
             ITEM_TMP.b = baseLoja; ITEM_TMP.k = k;
             const it: Item = { b: baseLoja, k };
             const p = precoItem(it), ok = saldo(u) >= p && livres(u.mochila) > 0;
@@ -465,6 +469,7 @@ function PNpc({ u, id }: { u: Unit; id: string }) {
       </>
     );
   }
+  if (id === "ferreiro") return <PForja u={u} />;
   /* banqueiro */
   const ouro = (f: () => void) => { f(); fx({ t: "ui", s: "compra" }); atualizar(); };
   return (
@@ -486,26 +491,105 @@ function PNpc({ u, id }: { u: Unit; id: string }) {
     </>
   );
 }
+/* ---------- [SYSTEM: FORJA] balcão do Ferreiro ---------- */
+function PForja({ u }: { u: Unit }) {
+  void tick.value;
+  const linhas: { it: Item; onde: string }[] = [];
+  for (const s of SLOTS_EQ) { const it = u.eqp[s]; if (it) linhas.push({ it, onde: "vestido" }); }
+  for (const it of u.mochila) if (it && !ehPocao(it)) linhas.push({ it: it as Item, onde: "mochila" });
+  return (
+    <>
+      <p class="dica" style={{ marginTop: 0 }}>Cada nível custa mais e dá menos certo. Falhar custa o ouro; do +6 em diante, metade das falhas derruba um nível. A loja só vende até +{LOJA_MAX_K}.</p>
+      {!linhas.length && <p class="dica">Nada para forjar: vista ou carregue um equipamento.</p>}
+      {linhas.map(({ it, onde }, i) => {
+        const c = custoForja(it), ch = chanceForja(it), max = it.k >= NIVEL_MAX_F;
+        return (
+          <div key={i} class="nrow">
+            <span class="nic"><IcoItem ic={BASES[it.b].ic} cor={corItem(it)} /></span>
+            <span class="ntx"><b style={BASES[it.b].raro ? { color: RARO_COR[BASES[it.b].raro!] } : undefined}>{nomeItem(it)}</b>
+              <small>{max ? "no máximo" : onde + " · " + Math.round(ch * 100) + "% para +" + (it.k + 1) + (riscoForja(it) ? " · pode cair" : "")}</small></span>
+            <button class="cb ouro" disabled={max || saldo(u) < c} onClick={(e) => {
+              const r = forjar(u, it);
+              if (!r) { recusa(e.currentTarget as HTMLElement); return; }
+              avisoDe(u, r.ok ? "Forjou " + nomeItem(it) + "!" : "A forja falhou" + (r.caiu ? ": caiu para +" + it.k : ""), r.ok ? "#e0bd63" : "#e0685a");
+              fx({ t: "ui", s: r.ok ? "equip" : "nega" }); retrato.value = retratoDe(u); atualizar();
+            }}><b>{max ? "—" : fmt(c)}</b><small>forjar</small></button>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+/* ---------- [SYSTEM: MERCADO] vitrine entre jogadores ---------- */
+let precoMerc = 0;
+function PMercado({ u }: { u: Unit }) {
+  void tick.value;
+  const minhas = minhasOfertas(u), outras = MERCADO.ofertas.filter((o) => o.vendedor !== u);
+  const sel = itemSel && itemSel.onde === "mo" ? u.mochila[itemSel.i as number] : null;
+  const vende = sel && !ehPocao(sel) ? sel as Item : null;
+  if (vende && !precoMerc) precoMerc = precoSugerido(vende);
+  return (
+    <>
+      <div class="secao">À venda</div>
+      {!outras.length && <p class="dica">Ninguém anunciou nada ainda.</p>}
+      {outras.slice(0, 40).map((o) => {
+        const at = BASES[o.item.b].s ? u.eqp[BASES[o.item.b].s!] : null;
+        const serve = servePara(o.item, u.kind);
+        return (
+          <div key={o.id} class="nrow">
+            <span class="nic"><IcoItem ic={BASES[o.item.b].ic} cor={corItem(o.item)} /></span>
+            <span class="ntx"><b style={BASES[o.item.b].raro ? { color: RARO_COR[BASES[o.item.b].raro!] } : undefined}>{nomeItem(o.item)}</b>
+              <small>{o.nome} · {serve ? comparaStats(o.item, at) : "outra vocação"}</small></span>
+            <button class="cb ouro" disabled={saldo(u) < o.preco || livres(u.mochila) < 1} onClick={(e) => {
+              if (!comprarOferta(u, o.id)) { recusa(e.currentTarget as HTMLElement); return; }
+              avisoDe(u, "Comprou " + nomeItem(o.item) + " de " + o.nome, "#e0bd63"); fx({ t: "ui", s: "compra" }); equiparSeQuiser(u); atualizar();
+            }}><b>{fmt(o.preco)}</b><small>comprar</small></button>
+          </div>
+        );
+      })}
+      <div class="secao">Seus anúncios · {minhas.length}/{OFERTAS_POR_VENDEDOR}</div>
+      {minhas.map((o) => (
+        <div key={o.id} class="nrow">
+          <span class="nic"><IcoItem ic={BASES[o.item.b].ic} cor={corItem(o.item)} /></span>
+          <span class="ntx"><b>{nomeItem(o.item)}</b><small>{fmt(o.preco)} · vence em {Math.ceil((o.ate - W.simTime) / 60)} min</small></span>
+          <button class="cb" onClick={(e) => { if (!cancelar(u, o.id)) { recusa(e.currentTarget as HTMLElement); return; } clique(); atualizar(); }}><b>Retirar</b><small>volta à mochila</small></button>
+        </div>
+      ))}
+      <p class="dica">Toque num item da mochila para anunciar. O valor vai para o seu banco quando alguém comprar, menos {Math.round(TAXA_MERCADO * 100)}% de taxa.</p>
+      {vende && <div class="idet">
+        <div class="inm">{nomeItem(vende)}</div>
+        <div class="ist">Loja paga {fmt(precoVenda(vende))} · sugerido {fmt(precoSugerido(vende))}</div>
+        <Lin rot="Preço"><Passo valor={fmt(precoMerc)} larg={70} menos={() => { precoMerc = Math.max(1, Math.round(precoMerc * .95)); atualizar(); }} mais={() => { precoMerc = Math.round(precoMerc * 1.05) + 1; atualizar(); }} /></Lin>
+        <button class="cb ouro" style={{ width: "100%" }} disabled={minhas.length >= OFERTAS_POR_VENDEDOR} onClick={(e) => {
+          if (!anunciar(u, itemSel!.i as number, precoMerc)) { recusa(e.currentTarget as HTMLElement); return; }
+          avisoDe(u, "Anunciou " + nomeItem(vende) + " por " + fmt(precoMerc), "#e0bd63"); itemSel = null; precoMerc = 0; clique(); atualizar();
+        }}><b>Anunciar</b><small>{minhas.length >= OFERTAS_POR_VENDEDOR ? "limite de anúncios" : "por " + fmt(precoMerc)}</small></button>
+      </div>}
+      <Casas arr={u.mochila} onde="mo" sel={itemSel} aoTocar={(i) => { precoMerc = 0; tocarSel("mo", i, !u.mochila[i]); }} />
+    </>
+  );
+}
 function LinhaPocao({ u, tipo }: { u: Unit; tipo: "hp" | "mp" }) {
   void tick.value;
   const b = tipo === "hp" ? "pvida" : "pmana", B = BASES[b], cabem = espacoPocao(u, b);
-  const pode = Math.min(cabem, Math.floor(saldo(u) / PRECO_POCAO));
+  const preco = precoPocao(tipo);
+  const pode = Math.min(cabem, Math.floor(saldo(u) / preco));
   const comprar = (n: number, e: Event) => {
     const foi = comprarPocoes(u, tipo, n);
     if (!foi) { recusa(e.currentTarget as HTMLElement); return; }
-    avisoDe(u, "+" + foi + " " + (tipo === "hp" ? "vida" : "mana") + " · −" + fmt(foi * PRECO_POCAO), "#8fe6a8");
+    avisoDe(u, "+" + foi + " " + (tipo === "hp" ? "vida" : "mana") + " · −" + fmt(foi * preco), "#8fe6a8");
     fx({ t: "ui", s: "compra" }); atualizar();
   };
   return (
     <>
       <div class="nrow">
         <span class="nic"><IcoItem ic={B.ic} cor="" /></span>
-        <span class="ntx"><b>{B.n}</b><small>{descreveStats({ b, n: 1 })} · {PRECO_POCAO} cada · na mochila {tipo === "hp" ? u.potHp : u.potMp} · cabem {cabem}</small></span>
+        <span class="ntx"><b>{B.n}</b><small>{descreveStats({ b, n: 1 })} · {preco} cada · na mochila {tipo === "hp" ? u.potHp : u.potMp} · cabem {cabem}</small></span>
       </div>
       <div class="crow" style={{ marginBottom: "10px" }}>
-        <button class="cb ouro" disabled={pode < 1} onClick={(e) => comprar(1, e)}><b>+1</b><small>{PRECO_POCAO}</small></button>
-        <button class="cb ouro" disabled={pode < 1} onClick={(e) => comprar(10, e)}><b>+10</b><small>{fmt(PRECO_POCAO * Math.min(10, pode || 10))}</small></button>
-        <button class="cb ouro" disabled={pode < 1} onClick={(e) => comprar(1e9, e)}><b>Encher</b><small>{pode} · {fmt(pode * PRECO_POCAO)}</small></button>
+        <button class="cb ouro" disabled={pode < 1} onClick={(e) => comprar(1, e)}><b>+1</b><small>{preco}</small></button>
+        <button class="cb ouro" disabled={pode < 1} onClick={(e) => comprar(10, e)}><b>+10</b><small>{fmt(preco * Math.min(10, pode || 10))}</small></button>
+        <button class="cb ouro" disabled={pode < 1} onClick={(e) => comprar(1e9, e)}><b>Encher</b><small>{pode} · {fmt(pode * preco)}</small></button>
       </div>
     </>
   );

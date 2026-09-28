@@ -20,7 +20,12 @@ export const RARO_PRECO = [1, 1.7, 2.8, 4.8];
 
 export const SLOTS: SlotKey[] = ["cab", "amu", "arm", "arma", "esc", "cal", "ane", "bot"];
 export const SLOT_NOME: Record<SlotKey, string> = { cab: "Capacete", amu: "Amuleto", arm: "Armadura", arma: "Arma", esc: "Escudo", cal: "Calça", ane: "Anel", bot: "Bota" };
-export const NIVEL_MAX = 10, PRECO_POCAO = 30, MOCHILA_N = 20, COFRE_N = 50;
+export const NIVEL_MAX = 10, MOCHILA_N = 20, COFRE_N = 50;
+/* poção de vida é a mais cara: é ela que segura a caçada */
+export const PRECO_HP = 100, PRECO_MP = 50, PRECO_POCAO = PRECO_MP;
+export const precoPocao = (tipo: "hp" | "mp") => (tipo === "hp" ? PRECO_HP : PRECO_MP);
+/* a loja do Comerciante vende até +5; acima disso, só forja, loot ou mercado */
+export const LOJA_MAX_K = 5;
 
 const K_: VocKey[] = ["knight"], A_: VocKey[] = ["archer"], M_: VocKey[] = ["mage", "druid"], KA: VocKey[] = ["knight", "archer"];
 const METAL = "#c9cfd3", COURO = "#b0814f", MADEIRA = "#b58a52", PANO = "#9a7ad8", DOURADO = "#e6c25a";
@@ -71,8 +76,8 @@ export const BASES: Record<string, BaseDef> = {
   cajadoAncestral: { n: "Cajado ancestral", s: "arma", voc: M_, st: { mag: 2.3, mp: 12 }, preco: 170, ic: "cajado", cor: "#c68bff", duas: 1, raro: 3 },
   colarDragao: { n: "Colar do dragão", s: "amu", voc: null, st: { hp: 20, mp: 16, str: .3, mag: .3 }, preco: 160, ic: "amuleto", cor: "#ff7a4a", raro: 3 },
   elmoAlado: { n: "Elmo alado", s: "cab", voc: K_, st: { def: 1.0, hp: 10, spd: .8 }, preco: 150, ic: "elmo", cor: "#f0d88a", raro: 3 },
-  pvida: { n: "Poção de vida", pocao: "hp", st: {}, preco: PRECO_POCAO, ic: "pvida", cor: "#e0685a" },
-  pmana: { n: "Poção de mana", pocao: "mp", st: {}, preco: PRECO_POCAO, ic: "pmana", cor: "#6fb5e6" },
+  pvida: { n: "Poção de vida", pocao: "hp", st: {}, preco: PRECO_HP, ic: "pvida", cor: "#e0685a" },
+  pmana: { n: "Poção de mana", pocao: "mp", st: {}, preco: PRECO_MP, ic: "pmana", cor: "#6fb5e6" },
 };
 export const BASES_EQUIP = Object.keys(BASES).filter((k) => BASES[k].s);
 /* a loja do Comerciante só tem o comum; o resto vem das criaturas */

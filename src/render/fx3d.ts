@@ -301,7 +301,7 @@ function tratar(e: FxEv) {
     case "dmg": {
       const u = e.u;
       numeros.dano(u, e.v, e.heavy);
-      if (u === G.ctrl) { som("dor", 1); if (PREF.vibrar && navigator.vibrate) try { navigator.vibrate(e.heavy ? 40 : 18); } catch { /* sem vibração */ } }
+      if (u === G.ctrl) { som("dor", 1); if (PREF.vibrar && navigator.vibrate && (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive !== false) try { navigator.vibrate(e.heavy ? 40 : 18); } catch { /* sem vibração */ } }
       else som(e.heavy ? "impactoForte" : "impacto", volume(u.x, u.y) * .8);
       break;
     }

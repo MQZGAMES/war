@@ -71,7 +71,8 @@ export function buildMap() {
 export const CID_R = 7.5, NPC_ALCANCE = 2.1;
 const NPC_TIPOS: { id: Npc["id"]; nome: string; icone: string; h: number; dx: number; dy: number }[] = [
   { id: "feiticeiro", nome: "Feiticeiro", icone: "⚗", h: 276, dx: 4.5, dy: -2.5 },
-  { id: "comerciante", nome: "Comerciante", icone: "⚒", h: 28, dx: 3.6, dy: 3.6 },
+  { id: "comerciante", nome: "Comerciante", icone: "⚖", h: 28, dx: 3.6, dy: 3.6 },
+  { id: "ferreiro", nome: "Ferreiro", icone: "⚒", h: 14, dx: -4.5, dy: -2.5 },
   { id: "banqueiro", nome: "Banqueiro", icone: "◍", h: 46, dx: -2.5, dy: 4.5 },
 ];
 export function emPZ(x: number, y: number) {
@@ -101,7 +102,9 @@ export function construirCidade(paleta: (h: number, s: number) => { h: number; c
     solid[idx(nx, ny)] = 1;
     const fa = Math.atan2(cy - (ny + .5), cx - (nx + .5));
     npcs.push({ id: T.id, nome: T.nome, icone: T.icone, placa: T.icone + " " + T.nome, x: nx + .5, y: ny + .5,
-      fa, cor: paleta(T.h, 58), bob: rnd() * 6 });
+      /* o Ferreiro (mais novo) não consome o sorteio: mundos salvos antes
+         dele continuam com a mesma cidade e os mesmos pontos de caça */
+      fa, cor: paleta(T.h, 58), bob: T.id === "ferreiro" ? 1.7 : rnd() * 6 });
     /* a barraca fica atrás do balcão, do lado de fora da praça */
     const bx = Math.floor(nx + .5 - Math.cos(fa) * 1.2), by = Math.floor(ny + .5 - Math.sin(fa) * 1.2);
     if (inb(bx, by) && !(bx === nx && by === ny)) { solid[idx(bx, by)] = 1; }

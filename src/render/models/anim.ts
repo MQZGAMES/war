@@ -137,7 +137,8 @@ export function animar(r: Rig, p: Pose) {
         const g = p.golpe >= 0 ? Math.sin(Math.min(1, p.golpe) * Math.PI) : 0;
         const c2 = p.cast > 0 ? Math.sin(Math.min(1, p.cast) * Math.PI) : 0;
         qBraco.copy(o[H.ARM_R].quaternion).invert();
-        qTilt.setFromEuler(eTilt.set(.08 + c2 * .35 + g * .55, 0, -.04));
+        /* topo aberto para fora do corpo (z) para nunca cruzar o braço na passada */
+        qTilt.setFromEuler(eTilt.set(.1 + c2 * .35 + g * .55, 0, .2 - c2 * .1));
         o[H.FLECHA].quaternion.copy(qBraco).multiply(qTilt);
       }
       o[H.CAPE].rotation.x = .12 + w * .45 + p.investida * .5 + Math.sin(t * 3 + p.fase) * .05 * w;

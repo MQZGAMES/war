@@ -13,6 +13,7 @@ import type { Unit } from "./types";
 import { corGuilda, corLivre, makeUnit, paleta, resetNames } from "./unit";
 import { criarZonas, iniciaMundoUnit, novaParty, povoarZonas, reajustarFauna, sqBase } from "./world";
 import { atalhosPadrao } from "./spells";
+import { MERCADO } from "./mercado";
 
 export type Cfg = Record<VocKey, number>;
 /* Mega: o maior mapa que ainda roda liso no celular (grama e árvores em
@@ -47,6 +48,7 @@ export function prepararMundo(seed: number) {
   W.worldLivre = SETUP.livre; W.guildasN = SETUP.guildas; W.worldSize = SETUP.tamanho; W.worldBeastCap = SETUP.monstros;
   W.simTime = 0; W.uid = 1; W.worldTick = 0; W.grupoT = 0; W.featured = null; W.featT = 0;
   W.projs = []; W.meteors = []; W.ondas = [];
+  MERCADO.ofertas = [];
   G.sel = null; G.ctrl = null; G.mirandoSlot = -1; SETUP.sujo = false;
   W.units = []; W.squads = []; W.parties = []; W.partyId = 1; W.convitesPend = [];
   FX.length = 0;

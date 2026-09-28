@@ -7,7 +7,7 @@
 import { planejarMagia } from "./tatica";
 import { CHUVA_ALCANCE, CUSTO, MET_ALCANCE, NUM_SLOTS, SPELLS, ST, type SpellKey } from "./data";
 import { avisoDe, fx } from "./fx";
-import { comprarMelhorias, comprarPocoes, depositarOuro, ehPocao, guardarNoCofre, livres, mantem, saldo, semFrasco, venderItem, PRECO_POCAO } from "./items";
+import { comprarMelhorias, comprarPocoes, depositarOuro, ehPocao, guardarNoCofre, livres, mantem, saldo, semFrasco, venderItem, PRECO_POCAO, PRECO_HP, PRECO_MP } from "./items";
 import { dist, clamp, dist2 } from "./rng";
 import { los, losU, NPC_ALCANCE, npcDe, QBUF, queryRadius } from "./map";
 import { pzAtiva, pzRestante } from "./pk";
@@ -211,9 +211,9 @@ function precisaRefil(u: Unit) {
 }
 function reservaRefil(u: Unit) {
   const R = G.AUTO.refil;
-  let n = RESERVA_REFIL;
-  if (R.pocoes) n += Math.max(0, R.hp - u.potHp) + (u.maxMp > 0 ? Math.max(0, R.mp - u.potMp) : 0);
-  return PRECO_POCAO * n;
+  let v = RESERVA_REFIL * PRECO_MP;
+  if (R.pocoes) v += PRECO_HP * Math.max(0, R.hp - u.potHp) + (u.maxMp > 0 ? PRECO_MP * Math.max(0, R.mp - u.potMp) : 0);
+  return v;
 }
 export function pausaRefil(u: Unit | null, motivo: string) {
   if (!u || !u.refil) return;
@@ -260,7 +260,7 @@ function grupoComprando(u: Unit) {
 function compraDoGrupo(u: Unit, sq: Squad) {
   const w = u.w;
   if (!w) return false;
-  if (!w.compraLider && !u.pz && semFrasco(u) && saldo(u) >= PRECO_POCAO * 8) vaiComprar(u);
+  if (!w.compraLider && !u.pz && semFrasco(u) && saldo(u) >= PRECO_HP * 5) vaiComprar(u);
   if (!w.compraLider) return false;
   if (!w.pronto) { worldThink(u, sq); return true; }
   const c = G.ctrl;

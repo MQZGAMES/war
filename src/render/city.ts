@@ -206,6 +206,13 @@ export function construirCidade(): THREE.Group {
         bm.add(P.caixa(.05, .03, .5), [px, y + .6, pz], "#c9cfd3", 0, [0, -fa, 0]);
       }
       bm.add(P.cil(.16, .16, .05, 10), [cx + lado[0] * .45, y + .62, cz + lado[1] * .45], "#8e949a", 0, [Math.PI / 2, -fa, 0]);
+    } else if (n2.id === "ferreiro") {
+      /* bigorna no balcão e a forja acesa atrás */
+      bm.add(P.caixa(.34, .1, .14), [cx, y + .6, cz], "#3a3a40", 0, rot);
+      bm.add(P.caixa(.16, .1, .1), [cx, y + .7, cz], "#4a4a52", 0, rot);
+      bm.add(P.caixa(.5, .45, .4), [bx, y + .22, bz], "#6a5a50", 0, rot);
+      bm.add(P.caixa(.3, .12, .24), [bx, y + .47, bz], "#ff6a1a", 0, rot);
+      for (let k = 0; k < 3; k++) bm.add(P.caixa(.04, .04, .4), [cx + lado[0] * (k - 1) * .16 + Math.cos(fa) * .05, y + .57, cz + lado[1] * (k - 1) * .16 + Math.sin(fa) * .05], "#c9cfd3", 0, [0, -fa + .4 * (k - 1), 0]);
     } else {
       bm.add(P.caixa(.46, .3, .3), [bx, y + .15, bz], "#6a4428", 0, rot);
       bm.add(P.caixa(.48, .06, .32), [bx, y + .32, bz], "#e8c35a", 0, rot);
