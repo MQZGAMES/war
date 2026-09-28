@@ -10,7 +10,7 @@ import { carregarMundo, mundoDe } from "../sim/save";
 import { retratoDe } from "../render/portrait";
 import {
   conta, personagens, ativo, enviadoEm, erroNuvem, nuvemAtiva, nuvemOcupada, MAX_PERSONAGENS,
-  criarConta, entrar, sairConta, trocarSenha, baixarPersonagem, enviarMundo, excluirPersonagem, novoPersonagem, escolherAtivo, podeCriarPersonagem,
+  criarConta, entrar, sairConta, renomearPersonagem, trocarSenha, baixarPersonagem, enviarMundo, excluirPersonagem, novoPersonagem, escolherAtivo, podeCriarPersonagem,
 } from "../net/nuvem";
 import { tick, irPara, volta, aviso, retrato } from "./store";
 import { Ico } from "./icons";
@@ -35,6 +35,8 @@ export async function abrirPersonagem(id: number) {
   const m = await baixarPersonagem(id);
   if (!m) { irPara("heroi"); return; }
   carregarMundo(m);
+  /* o nome da lista vale (pode ter sido trocado em outro aparelho) */
+  if (G.ctrl && p && p.nome && G.ctrl.name !== p.nome) G.ctrl.name = p.nome;
   if (G.ctrl) retrato.value = retratoDe(G.ctrl);
   irPara(G.ctrl ? "jogo" : "heroi");
   aviso("Partida de " + (p ? p.nome : "personagem") + " aberta", "#8fe6a8");
@@ -80,6 +82,8 @@ export function Conta() {
   const [trocando, setTrocando] = useState(false);
   const [msg, setMsg] = useState("");
   const [esperando, setEsperando] = useState(false);
+  const [editando, setEditando] = useState(0);
+  const [novoNome, setNovoNome] = useState("");
   const tentar = async (f: () => Promise<unknown>, el?: HTMLElement | null) => {
     setEsperando(true);
     try { await f(); } catch (e) { recusa(el || undefined); setMsg("Não deu: " + ((e as Error).message || "erro") + "."); } finally { setEsperando(false); }
@@ -140,8 +144,27 @@ export function Conta() {
               <div class="plista">
                 {lista.map((p) => (
                   <div key={p.id} class={"pitem" + (p.id === ativo.value ? " on" : "")}>
+                    {editando === p.id ? (
+                      <form class="pnome" onSubmit={(e) => {
+                        e.preventDefault();
+                        const n = novoNome.trim().slice(0, 18), btn = (e.currentTarget as HTMLFormElement).querySelector("button") as HTMLElement | null;
+                        if (!n) { recusa(btn); setMsg("Digite um nome."); return; }
+                        clique();
+                        void tentar(async () => {
+                          await renomearPersonagem(p.id, n);
+                          if (p.id === ativo.value && G.ctrl) { G.ctrl.name = n; retrato.value = retratoDe(G.ctrl); }
+                          setEditando(0); setMsg("Agora é " + n + ".");
+                        }, btn);
+                      }} style={{ flexDirection: "row", gap: "6px" }}>
+                        <input class="fin" style={{ flex: 1, minWidth: 0 }} maxLength={18} autocomplete="off" spellcheck={false} value={novoNome}
+                          ref={(el) => { if (el && document.activeElement !== el && !el.dataset.foco) { el.dataset.foco = "1"; el.focus(); el.select(); } }}
+                          onInput={(e) => setNovoNome((e.target as HTMLInputElement).value)} onKeyDown={(e) => { if (e.key === "Escape") setEditando(0); }} />
+                        <button class="btn on" type="submit" disabled={ocup}>OK</button>
+                      </form>
+                    ) : <>
                     <span class="pnome"><b>{p.nome || "Sem nome"}</b>
                       <small>{[vocNome(p.vocacao), p.salvo ? "nível " + p.nivel : "ainda sem partida", p.atualizado ? dataNuvem(p.atualizado) : ""].filter(Boolean).join(" · ")}{p.id === ativo.value ? " · em jogo" : ""}</small></span>
+                    <button class="btn" disabled={ocup} aria-label={"Mudar o nome de " + p.nome} onClick={() => { clique(); setEditando(p.id); setNovoNome(p.nome); setMsg(""); }}><Ico n="lapis" s={16} /></button>
                     {G.ctrl ? (
                       <DoisToques cls="btn" disabled={ocup} acao={() => { void tentar(() => abrirPersonagem(p.id)); }} filhos="Jogar" armado="Trocar?" />
                     ) : (
@@ -149,6 +172,7 @@ export function Conta() {
                     )}
                     <DoisToques cls="btn sair" disabled={ocup} acao={() => { void tentar(async () => { await excluirPersonagem(p.id); setMsg(p.nome + " foi excluído da conta."); }); }}
                       filhos={<Ico n="fechar" s={16} />} armado="Excluir?" />
+                    </>}
                   </div>
                 ))}
               </div>

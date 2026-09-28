@@ -24,6 +24,7 @@ import { aplicarFicha, baixarJson, fichaDe, salvarPref } from "../sim/save";
 import { CORES_FICHA, CABELOS_N, PELES_N } from "../sim/unit";
 import { CABELOS, PELES } from "../render/models/humanos";
 import { clamp } from "../sim/rng";
+import { ativo, conta, renomearPersonagem } from "../net/nuvem";
 import type { Coisa, Item, Pocao, SlotKey, Unit } from "../sim/types";
 import { tick, painel, painelUlt, npcAberto, cheio, abrirDeck, fecharDeck, atualizar, retrato, irPara, type Painel } from "./store";
 import { retratoDe } from "../render/portrait";
@@ -422,7 +423,11 @@ function PFicha({ u }: { u: Unit }) {
   void tick.value;
   const [msg, setMsg] = useState("");
   const arq = useRef<HTMLInputElement>(null);
-  const renomear = (v: string) => { v = v.slice(0, 18); if (!v.trim() || v === u.name) return; u.name = v; atualizar(); };
+  const renomear = (v: string) => {
+    v = v.slice(0, 18); if (!v.trim() || v === u.name) return; u.name = v; atualizar();
+    /* o personagem da conta na nuvem acompanha o nome novo */
+    if (u === G.ctrl && conta.value && ativo.value) renomearPersonagem(ativo.value, v).catch(() => {});
+  };
   return (
     <>
       <Lin rot="Nome do personagem">

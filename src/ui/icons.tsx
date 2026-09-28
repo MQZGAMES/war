@@ -16,6 +16,7 @@ const I: Record<string, string> = {
   cajado: '<path d="M5 22 16 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="17.5" cy="5.5" r="3.4" fill="currentColor"/>',
   folha: '<path d="M5 19C5 9 11 4 20 4c0 9-5 15-15 15z" fill="currentColor"/><path d="M5 19l9-9" stroke="#0b1210" stroke-width="1.4" opacity=".5"/>',
   coracao: '<path d="M12 21s-8-5.2-8-11a4.5 4.5 0 018-2.8A4.5 4.5 0 0120 10c0 5.8-8 11-8 11z" fill="currentColor"/>',
+  lapis: '<path d="M4 20l1-4.5L15.5 5a2.1 2.1 0 013 3L8 18.5z" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linejoin="round"/><path d="M13.5 7l3.5 3.5M4 20h5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>',
   gota: '<path d="M12 2.5c3.6 4.6 6.4 8.3 6.4 11.8a6.4 6.4 0 01-12.8 0C5.6 10.8 8.4 7.1 12 2.5z" fill="currentColor"/>',
   escudoI: '<path d="M12 2l8 3v6c0 6-4 9-8 11-4-2-8-5-8-11V5z" fill="currentColor"/>',
   frasco: '<path d="M9 2h6v4l3.5 4.5V20a2 2 0 01-2 2h-9a2 2 0 01-2-2v-9.5L9 6z" fill="currentColor" opacity=".35"/><path d="M6.5 13h11v7a1.5 1.5 0 01-1.5 1.5H8A1.5 1.5 0 016.5 20z" fill="currentColor"/>',

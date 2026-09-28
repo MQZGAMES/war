@@ -52,6 +52,7 @@ function traduz(m: string, code = ""): Error {
   if (/BLOQUEADO/.test(m)) return new Error("muitas senhas erradas seguidas; espere 5 minutos");
   if (/SENHA_CURTA/.test(m)) return new Error("a senha precisa ter pelo menos 6 caracteres");
   if (/LIMITE_PERSONAGENS/.test(m)) return new Error("a conta já tem " + MAX_PERSONAGENS + " personagens; exclua um para criar outro");
+  if (/NOME_INVALIDO/.test(m)) return new Error("o nome precisa ter de 1 a 18 letras");
   if (/PERSONAGEM_INVALIDO/.test(m)) return new Error("esse personagem não existe mais nesta conta");
   if (/SESSAO_INVALIDA/.test(m)) { esquecerSessao(); return new Error("a sessão venceu; entre de novo"); }
   if (/fetch|network|failed to|load failed/i.test(m)) return new Error("sem conexão com o servidor");
@@ -149,6 +150,10 @@ export async function excluirPersonagem(id: number) {
   if (ativo.value === id) ativo.value = 0;
   lista(d.personagens);
   guardar();
+}
+export async function renomearPersonagem(id: number, nome: string) {
+  const d = await rpc<{ personagens: Personagem[] }>("mdc_renomear_personagem", { p_token: token, p_id: id, p_nome: nome.trim() });
+  lista(d.personagens);
 }
 export function escolherAtivo(id: number) { ativo.value = id; guardar(); }
 export async function baixarPersonagem(id: number): Promise<unknown> {

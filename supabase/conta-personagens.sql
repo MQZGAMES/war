@@ -200,6 +200,18 @@ begin
   return json_build_object('personagens', mdc_lista(e));
 end $$;
 
+-- trocar o nome de um personagem da conta (1 a 18 letras)
+create or replace function public.mdc_renomear_personagem(p_token text, p_id bigint, p_nome text) returns json
+language plpgsql security definer set search_path = public, extensions as $$
+declare e text := mdc_da_sessao(p_token); n text := trim(coalesce(p_nome, ''));
+begin
+  if length(n) < 1 or length(n) > 18 then raise exception 'NOME_INVALIDO'; end if;
+  update mdc_personagens set nome = n where id = p_id and email = e;
+  if not found then raise exception 'PERSONAGEM_INVALIDO'; end if;
+  return json_build_object('personagens', mdc_lista(e));
+end $$;
+
+grant execute on function public.mdc_renomear_personagem(text, bigint, text) to anon, authenticated;
 grant execute on function public.mdc_criar_conta(text, text) to anon, authenticated;
 grant execute on function public.mdc_entrar(text, text) to anon, authenticated;
 grant execute on function public.mdc_personagens(text) to anon, authenticated;
