@@ -16,6 +16,8 @@ export const nuvemAtiva = !!(URL_ && CHAVE);
 
 export interface MetaNuvem { quando: string; heroi: string; nivel: number }
 export const conta = signal<{ usuario: string } | null>(null);
+/* e-mail da conta e as outras contas do mesmo e-mail */
+export const emailConta = signal<{ email: string; outras: string[] } | null>(null);
 export const metaNuvem = signal<MetaNuvem | null>(null);
 export const nuvemOcupada = signal(false);
 /* último envio que deu certo (relógio do aparelho) e o último erro */
@@ -44,6 +46,8 @@ function traduz(m: string, code = ""): Error {
   if (/LOGIN_INVALIDO/.test(m)) return new Error("usuário ou senha errados");
   if (/BLOQUEADO/.test(m)) return new Error("muitas senhas erradas seguidas; espere 5 minutos");
   if (/USUARIO_INVALIDO/.test(m)) return new Error("o usuário precisa ter de 3 a 20 letras minúsculas, números, ponto, traço ou _");
+  if (/EMAIL_INVALIDO/.test(m)) return new Error("esse e-mail não parece válido");
+  if (/EMAIL_CHEIO/.test(m)) return new Error("esse e-mail já tem 10 contas");
   if (/SENHA_CURTA/.test(m)) return new Error("a senha precisa ter pelo menos 6 caracteres");
   if (/SESSAO_INVALIDA/.test(m)) { esquecerSessao(); return new Error("a sessão venceu; entre de novo"); }
   if (/fetch|network|failed to|load failed/i.test(m)) return new Error("sem conexão com o servidor");
@@ -73,13 +77,14 @@ function guardarSessao(usuario: string, t: string) {
 function esquecerSessao() {
   token = "";
   try { localStorage.removeItem(SESSAO); } catch { /* nada */ }
-  conta.value = null; metaNuvem.value = null;
+  conta.value = null; metaNuvem.value = null; emailConta.value = null;
 }
 /* a sessão do login antigo por e-mail não vale mais: some do aparelho */
 function limparLoginAntigo() {
   try { for (const k of Object.keys(localStorage)) if (/^sb-.*-auth-token$/.test(k)) localStorage.removeItem(k); } catch { /* nada */ }
 }
-function meta(d: { heroi?: string; nivel?: number; atualizado?: string | null } | null) {
+function meta(d: { heroi?: string; nivel?: number; atualizado?: string | null; email?: string | null; outras?: string[] } | null) {
+  if (d && "email" in d) emailConta.value = { email: d.email || "", outras: d.outras || (emailConta.value ? emailConta.value.outras : []) };
   metaNuvem.value = d && d.atualizado ? { quando: d.atualizado, heroi: d.heroi || "", nivel: d.nivel || 0 } : null;
 }
 
@@ -94,19 +99,26 @@ export async function iniciarNuvem(): Promise<string> {
 }
 export async function lerMeta() {
   if (!token) return null;
-  meta(await rpc<{ heroi: string; nivel: number; atualizado: string | null } | null>("mdg_meta", { p_token: token }));
+  meta(await rpc<{ heroi: string; nivel: number; atualizado: string | null; email: string | null; outras: string[] } | null>("mdg_meta", { p_token: token }));
   return metaNuvem.value;
 }
 const normaliza = (u: string) => u.trim().toLowerCase();
-export async function criarConta(usuario: string, senha: string) {
-  const d = await rpc<{ usuario: string; token: string }>("mdg_criar_conta", { p_usuario: normaliza(usuario), p_senha: senha });
+export async function criarConta(usuario: string, senha: string, email: string) {
+  const d = await rpc<{ usuario: string; token: string }>("mdg_criar_conta", { p_usuario: normaliza(usuario), p_senha: senha, p_email: normaliza(email) });
   guardarSessao(d.usuario, d.token);
   metaNuvem.value = null;
+  try { await lerMeta(); } catch { /* o e-mail aparece na próxima leitura */ }
+}
+/* cadastra ou troca o e-mail da conta (pede a senha) */
+export async function trocarEmail(senha: string, email: string) {
+  await rpc("mdg_trocar_email", { p_token: token, p_senha: senha, p_email: normaliza(email) });
+  await lerMeta();
 }
 export async function entrar(usuario: string, senha: string) {
-  const d = await rpc<{ usuario: string; token: string; heroi: string; nivel: number; atualizado: string | null }>("mdg_entrar", { p_usuario: normaliza(usuario), p_senha: senha });
+  const d = await rpc<{ usuario: string; token: string; heroi: string; nivel: number; atualizado: string | null; email: string | null }>("mdg_entrar", { p_usuario: normaliza(usuario), p_senha: senha });
   guardarSessao(d.usuario, d.token);
   meta(d);
+  try { await lerMeta(); } catch { /* segue com o que veio no login */ }
 }
 export async function trocarSenha(atual: string, nova: string) {
   await rpc("mdg_trocar_senha", { p_token: token, p_atual: atual, p_nova: nova });

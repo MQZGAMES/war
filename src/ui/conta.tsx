@@ -6,7 +6,7 @@ import { useState } from "preact/hooks";
 import { G } from "../sim/state";
 import { carregarMundo, mundoDe } from "../sim/save";
 import { retratoDe } from "../render/portrait";
-import { conta, enviadoEm, erroNuvem, metaNuvem, nuvemAtiva, nuvemOcupada, criarConta, entrar, sairConta, baixarMundo, enviarMundo, trocarSenha } from "../net/nuvem";
+import { conta, emailConta, trocarEmail, enviadoEm, erroNuvem, metaNuvem, nuvemAtiva, nuvemOcupada, criarConta, entrar, sairConta, baixarMundo, enviarMundo, trocarSenha } from "../net/nuvem";
 import { tick, irPara, volta, aviso, retrato } from "./store";
 import { Ico } from "./icons";
 import { DoisToques, Seg, clique, recusa } from "./comp";
@@ -35,7 +35,7 @@ export async function salvarNaNuvem() {
   await enviarMundo(m, "agora");
 }
 
-const USUARIO_OK = /^[a-z0-9_.-]{3,20}$/;
+const USUARIO_OK = /^[a-z0-9_.-]{3,20}$/, EMAIL_OK = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 export function Conta() {
   void tick.value;
   const c = conta.value, meta = metaNuvem.value, ocupada = nuvemOcupada.value;
@@ -45,6 +45,8 @@ export function Conta() {
   const [senha2, setSenha2] = useState("");
   const [ver, setVer] = useState(false);
   const [trocando, setTrocando] = useState(false);
+  const [email, setEmail] = useState("");
+  const [mudaEmail, setMudaEmail] = useState(false);
   const [msg, setMsg] = useState("");
   const [esperando, setEsperando] = useState(false);
   const tentar = async (f: () => Promise<unknown>, el?: HTMLElement | null) => {
@@ -63,9 +65,10 @@ export function Conta() {
     if (!USUARIO_OK.test(u)) { recusa(btn || undefined); setMsg("O usuário precisa ter de 3 a 20 letras minúsculas, números, ponto, traço ou _."); return; }
     if (senha.length < 6) { recusa(btn || undefined); setMsg("A senha precisa ter pelo menos 6 caracteres."); return; }
     if (aba === "criar" && senha !== senha2) { recusa(btn || undefined); setMsg("As duas senhas não batem."); return; }
+    if (aba === "criar" && !EMAIL_OK.test(email.trim())) { recusa(btn || undefined); setMsg("Digite um e-mail válido."); return; }
     clique();
     void tentar(async () => {
-      if (aba === "criar") { await criarConta(u, senha); setMsg("Conta criada. Guarde o usuário e a senha: é com eles que você entra em outro aparelho."); }
+      if (aba === "criar") { await criarConta(u, senha, email); setMsg("Conta criada. Guarde o usuário e a senha: é com eles que você entra em outro aparelho."); }
       else { await entrar(u, senha); setMsg(""); }
       setSenha(""); setSenha2("");
     }, btn);
@@ -84,6 +87,8 @@ export function Conta() {
               <form onSubmit={enviarForm} style={{ marginTop: "12px" }}>
                 <input class="fin" style={{ width: "100%" }} autocomplete="username" autocapitalize="none" spellcheck={false} maxLength={20}
                   placeholder="usuário" value={usuario} onInput={(e) => setUsuario((e.target as HTMLInputElement).value.toLowerCase().replace(/\s/g, ""))} />
+                {aba === "criar" && <input class="fin" style={{ width: "100%", marginTop: "8px" }} type="email" inputMode="email" autocomplete="email" autocapitalize="none" spellcheck={false} maxLength={120}
+                  placeholder="e-mail" value={email} onInput={(e) => setEmail((e.target as HTMLInputElement).value.replace(/\s/g, ""))} />}
                 {campoSenha(senha, setSenha, "senha (6 ou mais caracteres)", aba === "criar" ? "new-password" : "current-password")}
                 {aba === "criar" && campoSenha(senha2, setSenha2, "repita a senha", "new-password")}
                 <label class="verSenha"><input type="checkbox" checked={ver} onChange={() => setVer(!ver)} /> mostrar a senha</label>
@@ -91,13 +96,14 @@ export function Conta() {
                   {ocup ? "Conferindo…" : aba === "criar" ? "Criar conta e entrar" : "Entrar"}</button>
               </form>
               <p class="dica">{msg || (aba === "criar"
-                ? "Sem e-mail: só um usuário e uma senha. Não dá para recuperar a senha esquecida, então anote."
+                ? "Um mesmo e-mail pode ter várias contas (uma por pessoa da casa, ou uma por herói). Você entra sempre pelo usuário e senha; anote os dois."
                 : "Com a conta, a partida vai junto para o celular, o tablet e o computador.")}</p>
             </>
           ) : (
             <>
               <div class="secao">Conta</div>
               <p class="dica" style={{ marginTop: 0 }}>Conectado como <b>{c.usuario}</b>.<br />
+                {emailConta.value && emailConta.value.email ? <>E-mail: <b>{emailConta.value.email}</b>{emailConta.value.outras.length ? <> · outras contas neste e-mail: <b>{emailConta.value.outras.join(", ")}</b></> : null}<br /></> : <>Sem e-mail cadastrado.<br /></>}
                 {meta ? <>Na nuvem: {meta.heroi || "herói"} · nível {meta.nivel} · {dataNuvem(meta.quando)}</> : "Ainda não há partida salva nesta conta."}
                 {erroNuvem.value && <><br /><span style={{ color: "var(--bad)" }}>Último envio falhou: {erroNuvem.value}.</span></>}</p>
               <div class="grade2">
@@ -110,12 +116,28 @@ export function Conta() {
                 <DoisToques cls="cb" disabled={!meta || ocup} acao={() => { void tentar(abrirDaNuvem); }}
                   filhos={<><Ico n="carregar" s={20} /><b>Abrir da nuvem</b><small>dois toques</small></>}
                   armado={<><b>Toque de novo</b><small>substitui o mundo atual</small></>} />
-                <button class="cb" disabled={ocup} onClick={() => { clique(); setTrocando(!trocando); setMsg(""); setSenha(""); setSenha2(""); }}>
+                <button class="cb" disabled={ocup} onClick={() => { clique(); setMudaEmail(false); setTrocando(!trocando); setMsg(""); setSenha(""); setSenha2(""); }}>
                   <Ico n="engrenagem" s={20} /><b>Trocar a senha</b><small>{trocando ? "fechar" : "os outros aparelhos saem"}</small></button>
                 <DoisToques cls="cb sair" disabled={ocup} acao={() => { void tentar(async () => { await sairConta(); setMsg("Você saiu. A partida continua neste aparelho."); }); }}
                   filhos={<><Ico n="voltar" s={20} /><b>Sair da conta</b><small>dois toques</small></>}
                   armado={<><b>Toque de novo</b><small>desconecta este aparelho</small></>} />
               </div>
+              <button class="btn" style={{ width: "100%", marginTop: "8px" }} disabled={ocup} onClick={() => { clique(); setMudaEmail(!mudaEmail); setTrocando(false); setMsg(""); setSenha(""); setEmail(emailConta.value ? emailConta.value.email : ""); }}>
+                {emailConta.value && emailConta.value.email ? "Trocar o e-mail da conta" : "Cadastrar e-mail na conta"}</button>
+              {mudaEmail && (
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  const btn = (e.currentTarget as HTMLFormElement).querySelector("button[type=submit]") as HTMLElement | null;
+                  if (!EMAIL_OK.test(email.trim())) { recusa(btn || undefined); setMsg("Digite um e-mail válido."); return; }
+                  clique();
+                  void tentar(async () => { await trocarEmail(senha, email); setMudaEmail(false); setSenha(""); setMsg("E-mail salvo na conta."); }, btn);
+                }} style={{ marginTop: "10px" }}>
+                  <input class="fin" style={{ width: "100%" }} type="email" inputMode="email" autocomplete="email" autocapitalize="none" spellcheck={false} maxLength={120}
+                    placeholder="e-mail" value={email} onInput={(e) => setEmail((e.target as HTMLInputElement).value.replace(/\s/g, ""))} />
+                  {campoSenha(senha, setSenha, "senha da conta", "current-password")}
+                  <button class="go" type="submit" disabled={ocup} style={{ width: "100%", marginTop: "10px" }}>{ocup ? "Conferindo…" : "Salvar e-mail"}</button>
+                </form>
+              )}
               {trocando && (
                 <form onSubmit={(e) => {
                   e.preventDefault();
