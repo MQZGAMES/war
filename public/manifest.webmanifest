@@ -1,0 +1,20 @@
+{
+  "name": "Mesa de Guerra",
+  "short_name": "Mesa de Guerra",
+  "description": "RPG de mundo aberto num diorama 3D. Mobile first, no navegador, offline.",
+  "lang": "pt-BR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "any",
+  "background_color": "#0b1210",
+  "theme_color": "#0b1210",
+  "categories": ["games"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

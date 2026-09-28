@@ -1,0 +1,268 @@
+/* ================================================================
+   SIMULAÇÃO por passo fixo (1/60 s) — mover, virar, regenerar, pensar,
+   atacar; renascimento; projéteis, ondas, meteoros.
+   ================================================================ */
+import { PARAL_MULT, ST, VIGOR_MULT } from "./data";
+import { fx, ui } from "./fx";
+import { beastAttack, beastBaque, beastInvestida, golpe, shoot, updateMeteors, updateOndas, updateProjectiles } from "./combat";
+import { blockedPt, buildGrid, cellsAround, emPZ, findPath, los, losU, losU2, nearestFree, refreshAlive } from "./map";
+import { caveiraPasso, pzAtiva } from "./pk";
+import { clamp, dist, dist2, rnd, rr } from "./rng";
+import { G, W, hooks } from "./state";
+import { dmgFis, dmgMag, recalcular } from "./stats";
+import type { Unit } from "./types";
+import { goTo, novaPostura, setState, TRAVA_MIN, TRAVA_TESTE, TRAVA_VOLTA } from "./unit";
+import { beastThink, soltarPreso } from "./ai";
+import { ctrlThink, lideraSobre, pausaRefil, seguirLider, avisoPz } from "./player";
+import { encerraPk, worldStep, worldThink } from "./world";
+import { esquecerMorto } from "./relations";
+import { CID_R } from "./map";
+
+export const DT = 1 / 60;
+let pathBudget = 0;
+export function novoQuadro() { pathBudget = 8; }
+
+export function step() {
+  W.simTime += DT;
+  refreshAlive();
+  buildGrid();
+  worldStep();
+  const simTime = W.simTime;
+  for (const u of W.units) {
+    u.px = u.x; u.py = u.y;
+    if (u.dead) continue;
+    const sq = (u.party && u.party.sq) || W.squads[u.team];
+    u.cd -= DT; u.think -= DT; u.repath -= DT; u.hurt += DT; u.tagT -= DT;
+    if (u.beast && u.K.atk) { u.cdA -= DT; u.cdB -= DT; u.cdI -= DT; }
+
+    // para onde vira
+    {
+      let want = u.moveA;
+      const t0 = u.target;
+      if (u.charge > 0) want = Math.atan2(u.cvy, u.cvx);
+      else if (u.st === ST.RETREAT || u.st === ST.REGROUP) { /* segue o passo */ }
+      else if (t0 && !t0.dead) {
+        const d0 = dist(u.x, u.y, t0.x, t0.y);
+        if (u.st === ST.ENGAGE || u.st === ST.KITE || u.swing > 0 || d0 < u.K.range * 1.25) want = Math.atan2(t0.y - u.y, t0.x - u.x);
+      }
+      let df = want - u.fa;
+      while (df > Math.PI) df -= Math.PI * 2;
+      while (df < -Math.PI) df += Math.PI * 2;
+      u.fa += clamp(df, -7 * DT, 7 * DT);
+      u.dirx = Math.cos(u.fa); u.diry = Math.sin(u.fa);
+    }
+    if (u.slow > 0) u.slow -= DT;
+    if (u.pressa > 0) u.pressa -= DT;
+    if (u.paral > 0) u.paral -= DT;
+    if (u.lunge > 0) u.lunge -= DT;
+    if (u.swing > 0) u.swing -= DT;
+    if (u.flash > 0) u.flash -= DT; if (u.squash > 0) u.squash -= DT;
+    u.moving = 0;
+    if (!u.beast && simTime > u.postT) novaPostura(u);
+    if (!u.beast) caveiraPasso(u);
+    {
+      const calm = u.hurt > 4 ? 2.2 : 1;
+      if (u.hp < u.maxHp) u.hp = Math.min(u.maxHp, u.hp + (u.K.rHp + u.regHp) * calm * DT);
+      if (u.mp < u.maxMp) u.mp = Math.min(u.maxMp, u.mp + (u.K.rMp + u.regMp) * calm * DT);
+    }
+    {
+      const t1 = u.target;
+      const want = (u.kind !== "knight" && !u.beast && t1 && !t1.dead && dist(u.x, u.y, t1.x, t1.y) <= u.K.range * 1.2) ? 1 : 0;
+      u.aim += clamp(want - u.aim, -3.2 * DT, 3.2 * DT);
+    }
+    if (u.draw > 0) {
+      u.draw -= DT;
+      if (u.draw <= 0) {
+        const t2 = u.pending;
+        if (t2 && !t2.dead && dist(u.x, u.y, t2.x, t2.y) <= u.K.range + 1.3 && los(u.x, u.y, t2.x, t2.y)) {
+          shoot(u, t2, "arrow", dmgFis(u));
+          u.swing = .3; u.swMax = .3;
+        }
+        u.pending = null;
+      }
+    }
+    if (u.think <= 0) {
+      u.think = .28 + rnd() * .14;
+      if (u.beast) beastThink(u);
+      else if (u === G.ctrl) ctrlThink(u, sq);
+      else if (G.AUTO.lider && G.ctrl && lideraSobre(u)) seguirLider(u, sq);
+      else worldThink(u, sq);
+    }
+    // investida do cavaleiro
+    if (u.charge > 0) {
+      u.charge -= DT;
+      const s = u.K.spd * 3.6 * DT;
+      moveBy(u, u.cvx * s, u.cvy * s);
+      u.moving = 1; u.bob += s * 11;
+      const t = u.target;
+      if (t && !t.dead && dist(u.x, u.y, t.x, t.y) < 1.35) {
+        golpe(u, t, dmgFis(u) * 1.55, false, true); t.slow = 1.1; u.charge = 0;
+        fx({ t: "ring", x: t.x, y: t.y, c: u.cor.hi, life: .4 });
+        fx({ t: "impact", x: t.x, y: t.y, kind: "baque" });
+      }
+      continue;
+    }
+    // andar
+    let dx = 0, dy = 0;
+    if (u === G.ctrl && G.tvn) {
+      dx = G.tvx; dy = G.tvy; u.ordem = null; u.path = null; u.alvoManual = null; u.npcAlvo = null;
+      if (u.refil) pausaRefil(u, "volta quando você parar");
+      u.refilEspera = simTime + 1.5;
+    } else if (u.st !== ST.ENGAGE && u.goal) {
+      if (u.repath <= 0) {
+        if (losU2(u.x, u.y, u.goal.x, u.goal.y)) { u.path = null; u.pi = 0; u.repath = .35 + rnd() * .25; }
+        else if (pathBudget > 0) {
+          u.repath = .55 + rnd() * .5; pathBudget--;
+          u.path = findPath(u.x, u.y, u.goal.x, u.goal.y); u.pi = 0;
+        }
+      }
+      if (u.path && u.pi < u.path.length) {
+        while (u.pi < u.path.length - 1 && dist(u.x, u.y, u.path[u.pi].x, u.path[u.pi].y) < .45) u.pi++;
+        const p = u.path[u.pi];
+        const l = dist(u.x, u.y, p.x, p.y);
+        if (l < .42) u.pi++;
+        else { dx += (p.x - u.x) / l; dy += (p.y - u.y) / l; }
+      } else if (u.goal) {
+        const l = dist(u.x, u.y, u.goal.x, u.goal.y);
+        if (l > .4) { dx += (u.goal.x - u.x) / l; dy += (u.goal.y - u.y) / l; }
+      }
+    }
+    // separação
+    let sx = 0, sy = 0;
+    {
+      const rSep = .93, rSep2 = rSep * rSep;
+      cellsAround(u, (o) => {
+        if (o === u) return;
+        const d2 = dist2(u.x, u.y, o.x, o.y);
+        if (d2 > rSep2 || d2 < 1e-5) return;
+        const d = Math.sqrt(d2);
+        sx += (u.x - o.x) / d * (rSep - d); sy += (u.y - o.y) / d * (rSep - d);
+      });
+    }
+    dx += sx * 2.1; dy += sy * 2.1;
+    let l = Math.hypot(dx, dy);
+    if (l > .02 && u.desvio > 0) {
+      u.desvio -= DT;
+      const c = Math.cos(u.desvioA), s = Math.sin(u.desvioA);
+      const nx = dx * c - dy * s, ny = dx * s + dy * c;
+      dx = nx; dy = ny; l = Math.hypot(dx, dy);
+    }
+    if (l > .02) {
+      const sp = u.K.spd * u.velo * (u.paral > 0 ? PARAL_MULT : u.slow > 0 ? .5 : 1) * (u.pressa > 0 ? VIGOR_MULT : 1) * DT;
+      moveBy(u, dx / l * sp, dy / l * sp);
+      u.bob += sp * 11; u.moving = 1; u.moveA = Math.atan2(dy, dx);
+      u.travT += DT;
+      if (u.travT >= TRAVA_TESTE) {
+        const andou = dist(u.x, u.y, u.travX, u.travY);
+        if (andou < TRAVA_MIN) {
+          u.travas++;
+          u.desvioA = (u.travas % 2 ? 1 : -1) * (1.1 + rnd() * .9);
+          u.desvio = 1.4;
+          u.path = null; u.pi = 0; u.repath = 0; u.goalKey = "";
+          if (u.travas >= TRAVA_VOLTA) soltarPreso(u);
+          else if (u.travas >= 2) {
+            const a = rnd() * 6.283, r = 3 + rnd() * 4;
+            goTo(u, u.x + Math.cos(a) * r, u.y + Math.sin(a) * r, "destrava" + u.travas);
+          }
+        } else u.travas = 0;
+        u.travT = 0; u.travX = u.x; u.travY = u.y;
+      }
+    } else { u.travT = 0; u.travX = u.x; u.travY = u.y; u.travas = 0; }
+
+    // atacar
+    const t = u.target;
+    if (t && !t.dead) {
+      const d = dist(u.x, u.y, t.x, t.y);
+      if (u.beast && u.K.atk) {
+        beastInvestida(u, t, d);
+        if (beastAttack(u, t, d)) u.cd = Math.max(u.cd, .35);
+      }
+      if (d <= u.K.range + .15 && u.cd <= 0 && losU(u, t)) {
+        u.cd = u.K.cd * rr(.9, 1.12);
+        if (u.kind === "archer") { u.lunge = .14; u.draw = u.drawMax; u.pending = t; }
+        else if (u.kind === "mage" || u.kind === "druid") {
+          u.lunge = .2; u.swing = .36; u.swMax = .36;
+          shoot(u, t, u.kind === "druid" ? "ice" : "fire", dmgMag(u));
+        } else {
+          u.lunge = .3; u.swing = .42; u.swMax = .42;
+          const dano = dmgFis(u) * rr(.85, 1.15);
+          fx({ t: "swing", u, heavy: !!u.beast && u.K.threat > 1 });
+          golpe(u, t, dano, false, true);
+          if (u.beast && u.K.atk) {
+            beastBaque(u, t, dano);
+            const vn = u.K.atk.veneno;
+            if (vn && !t.dead) t.slow = Math.max(t.slow, vn.lento);
+          }
+        }
+      }
+      if (u.tiros > 0 && simTime - u.tiroT > .18) {
+        u.tiroT = simTime; u.tiros--;
+        if (dist(u.x, u.y, t.x, t.y) <= u.K.range + 1 && los(u.x, u.y, t.x, t.y)) {
+          shoot(u, t, "arrow", dmgFis(u) * .75); u.swing = .22; u.swMax = .22;
+        }
+      }
+    }
+  }
+  for (const u of W.units) if (u.dead && !u.beast && u.reborn && u.reborn <= simTime) reviveUnit(u);
+  updateProjectiles(DT);
+  updateOndas(DT);
+  updateMeteors(DT);
+}
+
+/* [SYSTEM: CIDADE] barreira da PZ: criatura e quem tem trava não pisam
+   no calçamento — conta o corpo inteiro (os quatro cantos) */
+let avisoPzT = 0;
+function pzCantos(x: number, y: number, r: number) {
+  return (emPZ(x - r, y - r) ? 1 : 0) + (emPZ(x + r, y - r) ? 1 : 0) + (emPZ(x - r, y + r) ? 1 : 0) + (emPZ(x + r, y + r) ? 1 : 0);
+}
+export function moveBy(u: Unit, mx: number, my: number) {
+  const r = u.K.r;
+  const PZ_LONGE = (CID_R + 3) * (CID_R + 3);
+  const barra = !u.pz && (u.beast || pzAtiva(u)) && dist2(u.x, u.y, W.cidade.x, W.cidade.y) < PZ_LONGE;
+  const c0 = barra ? pzCantos(u.x, u.y, r) : 0;
+  const nx = u.x + mx;
+  if (!blockedPt(nx, u.y, r)) { if (barra && pzCantos(nx, u.y, r) > c0) barrou(u); else u.x = nx; }
+  const c1 = barra ? pzCantos(u.x, u.y, r) : 0;
+  const ny = u.y + my;
+  if (!blockedPt(u.x, ny, r)) { if (barra && pzCantos(u.x, ny, r) > c1) barrou(u); else u.y = ny; }
+  u.x = clamp(u.x, r, W.N - r); u.y = clamp(u.y, r, W.N - r);
+  if (!u.beast) u.pz = emPZ(u.x, u.y);
+}
+function barrou(u: Unit) {
+  if (u === G.ctrl && W.simTime > avisoPzT) { avisoPzT = W.simTime + 2.5; avisoPz(u); }
+}
+
+/* Só aventureiro renasce; a fauna morta sai e o gerador repõe. */
+export function reviveUnit(u: Unit) {
+  const c = W.cidade.nasce;
+  const f = nearestFree(c.x + rr(-1.6, 1.6), c.y + rr(-1.6, 1.6));
+  u.x = f[0] + .5; u.y = f[1] + .5; u.px = u.x; u.py = u.y; u.dead = false; u.pz = emPZ(u.x, u.y);
+  u.path = null; u.pi = 0; u.target = null; u.slow = 0; u.charge = 0; u.exAte = {}; u.tiros = 0;
+  u.hurt = 99; u.repath = 0; u.goalKey = ""; u.st = ST.ADVANCE; u.reborn = 0; u.draw = 0; u.pending = null; u.aim = 0; u.swing = 0;
+  esquecerMorto(u);
+  u.encomenda = null; u.alvoManual = null; u.npcAlvo = null; u.refil = null;
+  u.travX = u.x; u.travY = u.y; u.travT = 0; u.travas = 0; u.desvio = 0;
+  if (u.skull === "white") { u.skull = null; u.brancaInj = false; }
+  u.atkBy = {}; u.contrib = {}; u.pkJust = true; u.ultimos[0] = u.ultimos[1] = null;
+  u.pzLuta = -1e9; u.pzMorte = 0;
+  if (u.lvl > 1) {
+    u.lvl--;
+    if (u.pts > 0) u.pts--;
+    else {
+      let alvo: keyof typeof u.attr | null = null, v = 0;
+      for (const k in u.attr) { const kk = k as keyof typeof u.attr; if (u.attr[kk] > v) { v = u.attr[kk]; alvo = kk; } }
+      if (alvo) u.attr[alvo]--;
+    }
+  }
+  u.xp = 0;
+  recalcular(u);
+  u.pressa = 0; u.paral = 0; u.hp = u.maxHp; u.mp = u.maxMp;
+  u.fa = Math.atan2(W.cidade.y - u.y, W.cidade.x - u.x) + Math.PI; u.moveA = u.fa;
+  if (u === G.ctrl) { hooks.setCam(true); hooks.centrarEm(u); }
+  if (u.w) {
+    u.w.goal = "cidade"; u.w.pkT = 0; u.w.alvoPk = null; u.w.t = 0; u.w.etapa = 0; u.w.pronto = false;
+    if (u.party && u.party.modo === "pk") encerraPk(u.party);
+  }
+  fx({ t: "revive", u });
+  if (u === G.ctrl) ui.banner("De volta ao obelisco", "nível " + u.lvl, "");
+}
