@@ -126,19 +126,23 @@ function arco(m: Montador, maoX: number, maoY: number, madeira: THREE.Color, cor
   for (const r of [0, Math.PI / 2]) m.add(P.caixa(.045, .004, .08), [fx, maoY, .01], "#e8e0cc", H.FLECHA, [0, 0, r]);
 }
 function cajado(m: Montador, x: number, sh: number, bracoL: number, madeira: THREE.Color, orbe: THREE.Color, druida: boolean) {
-  const mao = sh - bracoL - .02;
-  m.add(P.cil(.026, .03, 1.15, 6), [x, mao + .2, .02], madeira, H.ARM_R);
+  /* o cajado passa pela mão, à frente do braço, preso ao osso da mão
+     direita (o mesmo da flecha): a animação o mantém de pé */
+  const mao = sh - bracoL - .02, zc = .09;
+  x -= .012;
+  m.add(P.cil(.026, .03, 1.15, 6), [x, mao + .2, zc], madeira, H.FLECHA);
+  m.add(P.cil(.034, .034, .07, 6), [x, mao, zc], "#3a2a1a", H.FLECHA);
   const topo = mao + .78;
   if (druida) {
-    m.add(P.octa(.075), [x, topo + .06, .02], orbe, H.ARM_R, [0, 0, 0], [1, 1.6, 1]);
-    m.add(lamina([[0, 0], [.1, .04], [.14, .1], [.05, .08]], .01), [x, topo - .06, .02], "#4f9a3c", H.ARM_R, [0, .4, .6]);
-    m.add(lamina([[0, 0], [-.1, .04], [-.14, .1], [-.05, .08]], .01), [x, topo - .02, .02], "#5fae48", H.ARM_R, [0, -.4, -.5]);
-    m.add(P.toro(.05, .012, 4, 8), [x, topo - .02, .02], madeira, H.ARM_R, [Math.PI / 2, 0, 0]);
+    m.add(P.octa(.075), [x, topo + .06, zc], orbe, H.FLECHA, [0, 0, 0], [1, 1.6, 1]);
+    m.add(lamina([[0, 0], [.1, .04], [.14, .1], [.05, .08]], .01), [x, topo - .06, zc], "#4f9a3c", H.FLECHA, [0, .4, .6]);
+    m.add(lamina([[0, 0], [-.1, .04], [-.14, .1], [-.05, .08]], .01), [x, topo - .02, zc], "#5fae48", H.FLECHA, [0, -.4, -.5]);
+    m.add(P.toro(.05, .012, 4, 8), [x, topo - .02, zc], madeira, H.FLECHA, [Math.PI / 2, 0, 0]);
   } else {
-    m.add(P.toro(.06, .016, 4, 9), [x, topo, .02], "#c9a23e", H.ARM_R, [0, 0, 0]);
-    m.add(P.esfera(.068, 1), [x, topo + .02, .02], orbe, H.ARM_R);
+    m.add(P.toro(.06, .016, 4, 9), [x, topo, zc], "#c9a23e", H.FLECHA, [0, 0, 0]);
+    m.add(P.esfera(.068, 1), [x, topo + .02, zc], orbe, H.FLECHA);
   }
-  return [x, topo + .04, .02] as [number, number, number];
+  return [x, topo + .04, zc] as [number, number, number];
 }
 
 /* ---------- vocações ---------- */
@@ -213,7 +217,7 @@ export function modeloHeroi(kind: string, cor: { c: string; lo: string; hi: stri
     }
     const orbe = druida ? (eq.arma >= 7 ? C("#b8ff7a") : C("#62e08a")) : (eq.arma >= 9 ? C("#d08cff") : eq.arma >= 5 ? C("#9fd8ff") : C("#6fb2ff"));
     const topo = cajado(m, -p.ombro, b.sh, p.bracoL, C("#7a5a34"), orbe, druida);
-    pontos.orbe = { osso: H.ARM_R, p: topo };
+    pontos.orbe = { osso: H.FLECHA, p: topo };
     pontos.arma = pontos.orbe;
   }
   pontos.cabeca = { osso: H.HEAD, p: [0, p.pernaH + p.troncoH + p.cabR * 2.1, 0] };

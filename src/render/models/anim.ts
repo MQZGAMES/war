@@ -62,6 +62,7 @@ function mirarArco(r: Rig, puxa: number) {
   void sR;
   return MIRA;
 }
+const qTilt = new THREE.Quaternion(), eTilt = new THREE.Euler();
 const qBraco = new THREE.Quaternion(), qRepouso = new THREE.Quaternion().setFromEuler(new THREE.Euler(.32, 0, -.1));
 function posarArco(o: THREE.Bone[], mira: number, puxa: number) {
   /* o osso do arco desfaz a rotação do braço: na mira o arco fica de pé,
@@ -108,7 +109,7 @@ export function animar(r: Rig, p: Pose) {
       } else if (a.arma === "cajado") {
         if (p.cast > 0) {
           const k = Math.sin(Math.min(1, p.cast) * Math.PI);
-          br = br * (1 - k) - 2.1 * k; bl = bl * (1 - k) - 1.2 * k; blz = .3 * k;
+          br = br * (1 - k) - 1.75 * k; bl = bl * (1 - k) - 1.2 * k; blz = .3 * k;
           o[H.TORSO].rotation.x -= .15 * k;
         }
         if (p.golpe >= 0) { const k = Math.sin(Math.min(1, p.golpe) * Math.PI); br = br - 1.25 * k; }
@@ -130,6 +131,15 @@ export function animar(r: Rig, p: Pose) {
       o[H.ARM_L].rotation.x = bl; o[H.ARM_L].rotation.z = blz;
       o[H.ARM_R].rotation.x = br; o[H.ARM_R].rotation.z = brz;
       if (a.arma === "arco") posarArco(o, mira, p.puxa);
+      else if (a.arma === "cajado") {
+        /* o cajado desfaz a rotação do braço e fica de pé; inclina à frente
+           ao conjurar e ao golpear, com o orbe apontando o alvo */
+        const g = p.golpe >= 0 ? Math.sin(Math.min(1, p.golpe) * Math.PI) : 0;
+        const c2 = p.cast > 0 ? Math.sin(Math.min(1, p.cast) * Math.PI) : 0;
+        qBraco.copy(o[H.ARM_R].quaternion).invert();
+        qTilt.setFromEuler(eTilt.set(.08 + c2 * .35 + g * .55, 0, -.04));
+        o[H.FLECHA].quaternion.copy(qBraco).multiply(qTilt);
+      }
       o[H.CAPE].rotation.x = .12 + w * .45 + p.investida * .5 + Math.sin(t * 3 + p.fase) * .05 * w;
       if (o[H.WING_L]) {
         const f = (a.arma === "clava" ? .25 : 0) + Math.sin(t * 2.2) * .15 + p.cast * .6;
