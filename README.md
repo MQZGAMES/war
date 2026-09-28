@@ -47,9 +47,8 @@ O save na nuvem é opcional: sem as variáveis do Supabase o jogo roda só com o
    O login é por link no e-mail (o modelo padrão do Supabase). Com SMTP próprio dá para incluir `{{ .Token }}` no modelo *Magic Link* e o e-mail passa a trazer também um código.
    Em *Authentication > URL Configuration* ponha a URL do Pages em *Site URL* e em *Redirect URLs* (e `http://localhost:5173/**` para testar no PC).
 2. **GitHub**: crie o repositório e envie esta pasta. Em *Settings > Pages > Source* escolha **GitHub Actions**.
-   Em *Settings > Secrets and variables > Actions > Variables* crie `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`
-   (em *Project Settings > API* no Supabase) e rode o workflow de novo.
-3. Para testar a nuvem localmente, copie `.env.example` para `.env.local` e preencha.
+   A URL e a chave publishable do Supabase ficam em `.env.production` (públicas por natureza; o RLS protege os dados).
+3. Para testar a nuvem localmente, copie `.env.production` para `.env.local`.
 
 ## Controles
 
