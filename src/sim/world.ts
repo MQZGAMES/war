@@ -193,6 +193,47 @@ export function povoarZonas() {
     }
   }
 }
+/* muda a quantidade de criaturas sem gerar outro mundo: refaz a cota de
+   cada espécie de cada ponto; falta nasce aos poucos pelo repovoamento,
+   sobra sai (só quem não está brigando) */
+export function reajustarFauna() {
+  let bruto = 0;
+  for (const z of W.zones) for (const k in z.sp) bruto += z.sp[k] * z.farto;
+  const f = bruto ? Math.min(2.2, W.worldBeastCap / bruto) : 1;
+  const cotas: { z: Zona; k: string; n: number }[] = [];
+  let soma = 0;
+  for (const z of W.zones) for (const k in z.sp) { const n = Math.max(1, Math.round(z.sp[k] * z.farto * f)); cotas.push({ z, k, n }); soma += n; }
+  while (soma > W.worldBeastCap) {
+    let m = null as (typeof cotas)[number] | null;
+    for (const c of cotas) if (c.n > 1 && (!m || c.n > m.n)) m = c;
+    if (!m) break;
+    m.n--; soma--;
+  }
+  for (const z of W.zones) z.alvoPop = 0;
+  for (const c of cotas) {
+    const z = c.z, bs = W.bandos.filter((b) => b.z === z && b.kind === c.k);
+    const cap = bandoMax(c.k as KindKey);
+    /* bandos novos se a cota passou do que os atuais comportam */
+    while (bs.length * cap < c.n) {
+      const p = pontoDeBando(z);
+      const b: Bando = { x: p.x, y: p.y, kind: c.k as KindKey, max: 0, pop: 0, repT: 0, z };
+      W.bandos.push(b); (z.bandos || (z.bandos = [])).push(b); bs.push(b);
+    }
+    const base = Math.floor(c.n / bs.length), sobra = c.n - base * bs.length;
+    bs.forEach((b, i) => {
+      b.max = base + (i < sobra ? 1 : 0);
+      let excesso = b.pop - b.max;
+      if (excesso <= 0) return;
+      for (const u of W.units) {
+        if (excesso <= 0) break;
+        if (u.bando !== b || u.dead || (u.target && !u.target.dead) || u.hurt < 5) continue;
+        u.dead = true; u.hp = 0; u.remover = true; u.morteT = W.simTime - 1;
+        b.pop--; z.pop--; excesso--;
+      }
+    });
+    z.alvoPop += c.n;
+  }
+}
 function gentePerto(x: number, y: number, r: number) {
   const m = queryRadius(x, y, r);
   for (let i = 0; i < m; i++) { const e = QBUF[i]; if (!e.beast && !e.dead) return true; }

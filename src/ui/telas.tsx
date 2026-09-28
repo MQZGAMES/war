@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { G, W } from "../sim/state";
 import { FIRST_NAMES, KINDS, TEAMS, VOCS, VOC_DESC, VOC_MATIZ, type VocKey } from "../sim/data";
-import { SETUP, TAMANHO_MEGA, criarHeroi, largar, somaCfg, distribuirTotal, sortearVocacoes, startWorld, type Cfg } from "../sim/session";
+import { SETUP, TAMANHO_MEGA, aplicarNoAtual, mudancasDeMundo, criarHeroi, largar, somaCfg, distribuirTotal, sortearVocacoes, startWorld, type Cfg } from "../sim/session";
 import { PREF, salvarPref, salvarLocalMundo, temMundoLocal, apagarLocal, MUNDO_CHAVE, carregarMundo, mundoDe, baixarJson } from "../sim/save";
 import { corPorMatiz } from "../sim/unit";
 import { clamp } from "../sim/rng";
@@ -246,6 +246,7 @@ export function Mundo() {
   void tick.value;
   const suja = () => { SETUP.sujo = true; atualizar(); };
   const gerar = () => { startWorld(); retrato.value = ""; irPara("heroi"); };
+  const estrut = mudancasDeMundo();
   return (
     <>
       <div class="folhaFundo" onClick={() => irPara(volta.value)} />
@@ -254,7 +255,7 @@ export function Mundo() {
         <Lin col rot="Regra"><Seg cls="" itens={[[1, "Cada um por si"], [0, "Guildas"]]} valor={SETUP.livre ? 1 : 0} aoEscolher={(v) => { SETUP.livre = v === 1; suja(); }} /></Lin>
         <p class="dica">{SETUP.livre ? "Cada um tem a própria cor. Ninguém é aliado fora da equipe montada por convite, mas também ninguém é inimigo até alguém atacar." : "Os membros usam tons parecidos da cor da guilda, se poupam e se curam. Guildas entram em guerra de tempos em tempos."}</p>
         {SETUP.livre ? <>
-          <Lin col rot="Aventureiros da IA"><Seg itens={[[8, "8"], [12, "12"], [16, "16"], [24, "24"], [32, "32"]]} valor={somaCfg(SETUP.cfgLivre)} aoEscolher={(v) => { distribuirTotal(v); suja(); }} /></Lin>
+          <Lin col rot="Aventureiros da IA"><Seg itens={[[8, "8"], [16, "16"], [24, "24"], [32, "32"], [50, "50"]]} valor={somaCfg(SETUP.cfgLivre)} aoEscolher={(v) => { distribuirTotal(v); suja(); }} /></Lin>
           <LinhaRoster c={SETUP.cfgLivre} nome="Aventureiros da IA" cor="#d9b45c" teto={16} />
         </> : <>
           <Lin col rot="Número de guildas"><Seg itens={[[2, "2"], [3, "3"], [4, "4"]]} valor={SETUP.guildas} aoEscolher={(v) => { SETUP.guildas = v; suja(); }} /></Lin>
@@ -264,10 +265,20 @@ export function Mundo() {
         <Lin col rot="Tamanho do mundo" sub={SETUP.tamanho === TAMANHO_MEGA ? "Mega: " + TAMANHO_MEGA + "² ladrilhos, mais pontos de caça e viagens longas." : undefined}><Seg itens={[[72, "72²"], [96, "96²"], [128, "128²"], [TAMANHO_MEGA, "Mega"]]} valor={SETUP.tamanho} aoEscolher={(v) => { SETUP.tamanho = v; suja(); }} /></Lin>
         <Lin col rot="Monstros no mundo" sub="Mesmo em Poucos, todas as 20 criaturas aparecem."><Seg itens={[[120, "Poucos"], [220, "Normal"], [340, "Muitos"]]} valor={SETUP.monstros} aoEscolher={(v) => { SETUP.monstros = v; suja(); }} /></Lin>
         <div style={{ height: "8px" }} />
+        {SETUP.sujo && <>
+          <div class="secao">Onde aplicar as mudanças?</div>
+          <button class="go" disabled={!!estrut.length} onClick={() => {
+            clique();
+            const r = aplicarNoAtual();
+            if (r) aviso("Mundo atual ajustado" + (r.entraram ? " · " + r.entraram + " chegaram" : "") + (r.sairam ? " · " + r.sairam + " partiram" : ""), "#8fe6a8");
+            irPara(volta.value);
+          }}>Aplicar no mundo atual<small>{estrut.length ? "precisa de mundo novo: " + estrut.join(", ") : "jogadores e criaturas mudam sem perder o que já aconteceu"}</small></button>
+          <div style={{ height: "8px" }} />
+        </>}
         {G.ctrl
-          ? <DoisToques cls="go" acao={gerar} filhos={SETUP.sujo ? "Aplicar e gerar mundo novo" : "Gerar mundo novo"} armado="Toque de novo: o mundo atual se perde" />
-          : <button class="go" onClick={() => { clique(); gerar(); }}>{SETUP.sujo ? "Aplicar e gerar mundo novo" : "Gerar mundo novo"}</button>}
-        <p class="dica">{SETUP.sujo ? "Há mudanças pendentes: elas valem ao gerar o mundo novo." : "Um mundo novo sorteia outra cidade e outros pontos de caça. Depois você escolhe o herói."}</p>
+          ? <DoisToques cls={SETUP.sujo ? "go sec" : "go"} acao={gerar} filhos={<>Gerar mundo novo<small>{SETUP.sujo ? "com as mudanças; o mundo atual se perde" : "outra cidade e outros pontos de caça"}</small></>} armado="Toque de novo: o mundo atual se perde" />
+          : <button class={SETUP.sujo ? "go sec" : "go"} onClick={() => { clique(); gerar(); }}>Gerar mundo novo<small>{SETUP.sujo ? "com as mudanças" : "outra cidade e outros pontos de caça"}</small></button>}
+        <p class="dica">{SETUP.sujo ? (estrut.length ? "Mudar " + estrut.join(" e ") + " só vale num mundo novo." : "Aplicar no atual mantém mapa, níveis, itens e grupos: quem sobra sai (primeiro quem está na cidade) e quem falta nasce no obelisco, no nível 1.") : "Um mundo novo sorteia outra cidade e outros pontos de caça. Depois você escolhe o herói."}</p>
         <p class="dica">Todo o calçamento da cidade é zona de proteção. Bater em criatura não trava; agredir um personagem que não te atacou trava 30 s, e matar por agressão trava 2 min. Morrer tira 1 nível, a mochila e o ouro fora do banco, com 10% de chance de perder 1 item equipado.</p>
       </div>
     </>

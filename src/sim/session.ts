@@ -11,7 +11,7 @@ import { G, W, hooks } from "./state";
 import { pontoDoPlano, pontoProporcional, recalcular } from "./stats";
 import type { Unit } from "./types";
 import { corGuilda, corLivre, makeUnit, paleta, resetNames } from "./unit";
-import { criarZonas, iniciaMundoUnit, novaParty, povoarZonas, sqBase } from "./world";
+import { criarZonas, iniciaMundoUnit, novaParty, povoarZonas, reajustarFauna, sqBase } from "./world";
 import { atalhosPadrao } from "./spells";
 
 export type Cfg = Record<VocKey, number>;
@@ -89,6 +89,59 @@ export function terminarInicio() {
   hooks.setCam(true);
   G.running = true;
   hooks.centrarEm(W.cidade);
+}
+/* o que só um mundo novo resolve: mapa, regra e guildas */
+export function mudancasDeMundo(): string[] {
+  const L: string[] = [];
+  if (SETUP.tamanho !== W.worldSize) L.push("tamanho do mapa");
+  if (SETUP.livre !== W.worldLivre) L.push("regra do mundo");
+  else if (!SETUP.livre && SETUP.guildas !== W.guildasN) L.push("número de guildas");
+  return L;
+}
+/* aplica no mundo em andamento: aventureiros da IA e criaturas.
+   Quem sobra sai (primeiro quem está na cidade, e o de menor nível);
+   quem falta nasce no obelisco, nível 1. Seu personagem e o seu grupo ficam. */
+export function aplicarNoAtual() {
+  if (mudancasDeMundo().length) return null;
+  const nT = W.worldLivre ? 1 : W.guildasN;
+  let entraram = 0, sairam = 0;
+  const meus = G.ctrl && G.ctrl.party ? G.ctrl.party.membros : [];
+  for (let t = 0; t < nT; t++) {
+    const c = cfgDe(t);
+    for (const k of VOCS) {
+      const lista = W.units.filter((u) => !u.beast && !u.remover && u.team === t && u.kind === k && u !== G.ctrl);
+      let falta = c[k] - lista.length;
+      if (falta < 0) {
+        lista.sort((a, b) => (Number(b.pz) - Number(a.pz)) || (a.lvl - b.lvl));
+        for (const u of lista) {
+          if (falta >= 0) break;
+          if (meus.indexOf(u) >= 0) continue;
+          if (u.party) { const p = u.party; const i = p.membros.indexOf(u); if (i >= 0) p.membros.splice(i, 1); if (p.lider === u) p.lider = p.membros[0] || null; u.party = null; }
+          fx({ t: "revive", u });
+          u.dead = true; u.hp = 0; u.remover = true; u.morteT = W.simTime - 1; u.reborn = 0;
+          falta++; sairam++;
+        }
+      }
+      for (; falta > 0; falta--) {
+        const f = nearestFree(W.cidade.x + rr(-5, 5), W.cidade.y + rr(-5, 5));
+        const u = makeUnit(t, k, f[0] + .5, f[1] + .5);
+        u.cor = W.worldLivre ? corLivre() : corGuilda(t);
+        iniciaMundoUnit(u);
+        u.pz = emPZ(u.x, u.y);
+        u.fa = rnd() * 6.283; u.moveA = u.fa;
+        W.units.push(u);
+        if (W.squads[t]) W.squads[t].start++;
+        novaParty(u);
+        fx({ t: "revive", u });
+        entraram++;
+      }
+    }
+  }
+  W.worldBeastCap = SETUP.monstros;
+  reajustarFauna();
+  SETUP.sujo = false;
+  refreshAlive(); buildGrid();
+  return { entraram, sairam };
 }
 export function startWorld() {
   if (SETUP.livre && !somaCfg(SETUP.cfgLivre)) SETUP.cfgLivre.knight = 1;
