@@ -24,9 +24,9 @@ function preparar() {
 }
 /* estúdio de depuração (só em dev): fotografa um herói numa pose e
    num ângulo quaisquer, para conferir armas e animação de perto */
-export function fotoPose(kind: string, pose: Partial<ReturnType<typeof novaPose>>, giro: number, px = 256): string {
+export function fotoPose(kind: string, pose: Partial<ReturnType<typeof novaPose>>, giro: number, px = 256, sexo: "m" | "f" = "m"): string {
   preparar();
-  const base = KINDS[kind as KindKey]?.beast ? modeloDe({ beast: true, kind } as unknown as Unit) : modeloVitrine(kind, { c: "#c0392b", lo: "#5a1a14", hi: "#ff8a7a" });
+  const base = KINDS[kind as KindKey]?.beast ? modeloDe({ beast: true, kind } as unknown as Unit) : modeloVitrine(kind, { c: "#c0392b", lo: "#5a1a14", hi: "#ff8a7a" }, sexo);
   const R = engine.renderer;
   const rt = new THREE.WebGLRenderTarget(px, px, { samples: 4 });
   rt.texture.colorSpace = THREE.SRGBColorSpace;
@@ -88,9 +88,9 @@ function foto(base: ModeloBase, px: number, corpo: boolean): string {
 export function retratoDe(u: Unit) {
   try { return foto(modeloDe(u), 128, false); } catch { return ""; }
 }
-export function retratoVitrine(kind: string, cor: { c: string; lo: string; hi: string }) {
-  const k = kind + cor.c;
+export function retratoVitrine(kind: string, cor: { c: string; lo: string; hi: string }, sexo: "m" | "f" = "m") {
+  const k = kind + cor.c + sexo;
   let s = cache.get(k);
-  if (!s) { try { s = foto(modeloVitrine(kind, cor), 192, true); } catch { s = ""; } cache.set(k, s); }
+  if (!s) { try { s = foto(modeloVitrine(kind, cor, sexo), 192, true); } catch { s = ""; } cache.set(k, s); }
   return s;
 }

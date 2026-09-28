@@ -1,5 +1,5 @@
 /* Criação de unidade, cores, nomes e utilidades de estado. */
-import { ACERTO_BASE, ACERTO_BICHO, FAUNA, FIRST_NAMES, GUILDA_H, KINDS, POSTURAS, ST, TEAMS, type Estado, type KindKey, type Paleta, type VocKey } from "./data";
+import { ACERTO_BASE, ACERTO_BICHO, FAUNA, FIRST_NAMES, GUILDA_H, sexoDoNome, KINDS, POSTURAS, ST, TEAMS, type Estado, type KindKey, type Paleta, type VocKey } from "./data";
 import { clamp, rnd, rr } from "./rng";
 import { W } from "./state";
 import { sorteiaPlano } from "./stats";
@@ -52,11 +52,19 @@ export function nextName() {
 
 export const TRAVA_TESTE = 3, TRAVA_MIN = .45, TRAVA_VOLTA = 8;
 
+/* pele e cabelo saem do número do aventureiro, sem gastar o sorteio do
+   mundo: a mesma semente continua gerando o mesmo mapa e os mesmos bandos */
+export const PELES_N = 4, CABELOS_N = 5;
+export function aparenciaPorId(id: number) {
+  const h = Math.imul(id + 7, 2654435761) >>> 0;
+  return { pele: h % PELES_N, cabelo: (h >>> 9) % CABELOS_N };
+}
 export function makeUnit(team: number, kind: KindKey, x: number, y: number): Unit {
   const K = KINDS[kind];
   const beast = !!K.beast;
+  const id = W.uid++, name = beast ? K.pt : nextName(), ap = aparenciaPorId(id);
   return {
-    id: W.uid++, team, kind, K, name: beast ? K.pt : nextName(),
+    id, team, kind, K, name, sexo: beast ? "m" : sexoDoNome(name), pele: ap.pele, cabelo: ap.cabelo,
     cor: beast ? TEAMS[FAUNA] : (TEAMS[team] || TEAMS[0]),
     swing: 0, swMax: 1, moving: 0, dirx: 0, diry: 1, reborn: 0, fa: 0, moveA: 0,
     draw: 0, drawMax: .36, pending: null, aim: 0,

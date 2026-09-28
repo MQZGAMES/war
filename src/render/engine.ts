@@ -20,7 +20,7 @@ export const engine = {
   time: 0,
   perdido: false,
   /* câmera: alvo no chão, distância pelo zoom */
-  cam: { x: 0, y: 0, tx: 0, ty: 0, zoom: .68, tzoom: .68, yaw: Math.PI / 4, pitch: 0.76, shakeX: 0, shakeY: 0, shakeT: 0, shakeF: 0 },
+  cam: { x: 0, y: 0, tx: 0, ty: 0, zoom: .68, tzoom: .68, yaw: Math.PI / 4, pitch: 0.76, shakeX: 0, shakeY: 0, shakeT: 0, shakeF: 0, h: 0 },
 };
 
 export function criarMotor(host: HTMLElement) {
@@ -123,8 +123,8 @@ export function atualizarCamera(dt: number) {
   const cp = Math.cos(C.pitch), sp = Math.sin(C.pitch);
   const ox = Math.cos(C.yaw) * cp * d, oz = Math.sin(C.yaw) * cp * d, oy = sp * d;
   const tx = C.x + C.shakeX, tz = C.y + C.shakeY;
-  engine.camera.position.set(tx + ox, oy, tz + oz);
-  alvo.set(tx, 0, tz);
+  engine.camera.position.set(tx + ox, oy + C.h, tz + oz);
+  alvo.set(tx, C.h, tz);
   engine.camera.lookAt(alvo);
   engine.camera.near = Math.max(.5, d * .2);
   engine.camera.far = d * 6 + 120;

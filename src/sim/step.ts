@@ -16,7 +16,6 @@ import { beastThink, soltarPreso } from "./ai";
 import { ctrlThink, lideraSobre, pausaRefil, seguirLider, avisoPz } from "./player";
 import { encerraPk, worldStep, worldThink } from "./world";
 import { esquecerMorto } from "./relations";
-import { CID_R } from "./map";
 
 export const DT = 1 / 60;
 let pathBudget = 0;
@@ -30,6 +29,25 @@ const medir = import.meta.env.DEV;
 let quadro = 0;
 export function novoQuadro() { pathBudget = 8; }
 
+/* [SYSTEM: PERF] mapa do que importa: células de 12 ladrilhos perto de
+   algum aventureiro vivo ou da câmera. Fora delas nada acontece que
+   alguém veja, então a fauna calma pode ser simulada com menos passos */
+const CEL_Q = 12;
+let quenteN = 0, quente = new Uint8Array(0);
+export const OLHO = { x: -1e9, y: -1e9, r: 0 };
+function marcarQuente() {
+  const n = Math.ceil(W.N / CEL_Q);
+  if (quenteN !== n) { quenteN = n; quente = new Uint8Array(n * n); }
+  quente.fill(0);
+  const marca = (x: number, y: number, r: number) => {
+    const x0 = Math.max(0, Math.floor((x - r) / CEL_Q)), x1 = Math.min(n - 1, Math.floor((x + r) / CEL_Q));
+    const y0 = Math.max(0, Math.floor((y - r) / CEL_Q)), y1 = Math.min(n - 1, Math.floor((y + r) / CEL_Q));
+    for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) quente[cy * n + cx] = 1;
+  };
+  for (const u of W.units) if (!u.beast && !u.dead) marca(u.x, u.y, 22);
+  if (OLHO.r > 0) marca(OLHO.x, OLHO.y, OLHO.r);
+}
+
 export function step() {
   const t00 = medir ? performance.now() : 0;
   W.simTime += DT; quadro++;
@@ -41,12 +59,19 @@ export function step() {
   worldStep();
   if (medir) PERF.mundo += performance.now() - tm;
   const simTime = W.simTime;
+  if ((quadro & 3) === 0 || quenteN === 0) marcarQuente();
   for (const u of W.units) {
     u.px = u.x; u.py = u.y;
     if (u.dead) continue;
+    /* bicho sossegado longe de todos anda e pensa em passos de 4 */
+    let dtu = DT;
+    if (u.beast && !(u.target && !u.target.dead) && !quente[((u.y / CEL_Q) | 0) * quenteN + ((u.x / CEL_Q) | 0)]) {
+      if (((u.id + quadro) & 3) !== 0) continue;
+      dtu = DT * 4;
+    }
     const sq = (u.party && u.party.sq) || W.squads[u.team];
-    u.cd -= DT; u.think -= DT; u.repath -= DT; u.hurt += DT; u.tagT -= DT;
-    if (u.beast && u.K.atk) { u.cdA -= DT; u.cdB -= DT; u.cdI -= DT; }
+    u.cd -= dtu; u.think -= dtu; u.repath -= dtu; u.hurt += dtu; u.tagT -= dtu;
+    if (u.beast && u.K.atk) { u.cdA -= dtu; u.cdB -= dtu; u.cdI -= dtu; }
 
     // para onde vira
     {
@@ -61,7 +86,7 @@ export function step() {
       let df = want - u.fa;
       while (df > Math.PI) df -= Math.PI * 2;
       while (df < -Math.PI) df += Math.PI * 2;
-      u.fa += clamp(df, -7 * DT, 7 * DT);
+      u.fa += clamp(df, -7 * dtu, 7 * dtu);
       u.dirx = Math.cos(u.fa); u.diry = Math.sin(u.fa);
     }
     if (u.venAte > 0) {
@@ -74,27 +99,27 @@ export function step() {
       }
       if (simTime >= u.venAte) { u.venAte = 0; u.venSrc = null; }
     }
-    if (u.slow > 0) u.slow -= DT;
-    if (u.pressa > 0) u.pressa -= DT;
-    if (u.paral > 0) u.paral -= DT;
-    if (u.lunge > 0) u.lunge -= DT;
-    if (u.swing > 0) u.swing -= DT;
-    if (u.flash > 0) u.flash -= DT; if (u.squash > 0) u.squash -= DT;
+    if (u.slow > 0) u.slow -= dtu;
+    if (u.pressa > 0) u.pressa -= dtu;
+    if (u.paral > 0) u.paral -= dtu;
+    if (u.lunge > 0) u.lunge -= dtu;
+    if (u.swing > 0) u.swing -= dtu;
+    if (u.flash > 0) u.flash -= dtu; if (u.squash > 0) u.squash -= dtu;
     u.moving = 0;
     if (!u.beast && simTime > u.postT) novaPostura(u);
     if (!u.beast) caveiraPasso(u);
     {
       const calm = u.hurt > 4 ? 2.2 : 1;
-      if (u.hp < u.maxHp) u.hp = Math.min(u.maxHp, u.hp + (u.K.rHp + u.regHp) * calm * DT);
-      if (u.mp < u.maxMp) u.mp = Math.min(u.maxMp, u.mp + (u.K.rMp + u.regMp) * calm * DT);
+      if (u.hp < u.maxHp) u.hp = Math.min(u.maxHp, u.hp + (u.K.rHp + u.regHp) * calm * dtu);
+      if (u.mp < u.maxMp) u.mp = Math.min(u.maxMp, u.mp + (u.K.rMp + u.regMp) * calm * dtu);
     }
     {
       const t1 = u.target;
       const want = (u.kind !== "knight" && !u.beast && t1 && !t1.dead && dist(u.x, u.y, t1.x, t1.y) <= u.K.range * 1.2) ? 1 : 0;
-      u.aim += clamp(want - u.aim, -3.2 * DT, 3.2 * DT);
+      u.aim += clamp(want - u.aim, -3.2 * dtu, 3.2 * dtu);
     }
     if (u.draw > 0) {
-      u.draw -= DT;
+      u.draw -= dtu;
       if (u.draw <= 0) {
         const t2 = u.pending;
         if (t2 && !t2.dead && dist(u.x, u.y, t2.x, t2.y) <= u.K.range + 1.3 && los(u.x, u.y, t2.x, t2.y)) {
@@ -115,8 +140,8 @@ export function step() {
     }
     // investida do cavaleiro
     if (u.charge > 0) {
-      u.charge -= DT;
-      const s = u.K.spd * 3.6 * DT;
+      u.charge -= dtu;
+      const s = u.K.spd * 3.6 * dtu;
       moveBy(u, u.cvx * s, u.cvy * s);
       u.moving = 1; u.bob += s * 11;
       const t = u.target;
@@ -175,17 +200,17 @@ export function step() {
     dx += sx * 1.8; dy += sy * 1.8;
     let l = Math.hypot(dx, dy);
     if (l > .02 && u.desvio > 0) {
-      u.desvio -= DT;
+      u.desvio -= dtu;
       const c = Math.cos(u.desvioA), s = Math.sin(u.desvioA);
       const nx = dx * c - dy * s, ny = dx * s + dy * c;
       dx = nx; dy = ny; l = Math.hypot(dx, dy);
     }
     if (l > .02) {
       const ritmo = querAndar ? 1 : Math.min(1, l * 1.6);
-      const sp = u.K.spd * u.velo * ritmo * (u.paral > 0 ? PARAL_MULT : u.slow > 0 ? .5 : 1) * (u.pressa > 0 ? VIGOR_MULT : 1) * DT;
+      const sp = u.K.spd * u.velo * ritmo * (u.paral > 0 ? PARAL_MULT : u.slow > 0 ? .5 : 1) * (u.pressa > 0 ? VIGOR_MULT : 1) * dtu;
       moveBy(u, dx / l * sp, dy / l * sp);
       if (querAndar || ritmo > .35) { u.bob += sp * 11; u.moving = 1; u.moveA = Math.atan2(dy, dx); }
-      if (querAndar) u.travT += DT;
+      if (querAndar) u.travT += dtu;
       if (u.travT >= TRAVA_TESTE) {
         const andou = dist(u.x, u.y, u.travX, u.travY);
         if (andou < TRAVA_MIN) {
@@ -258,7 +283,7 @@ function pzCantos(x: number, y: number, r: number) {
 }
 export function moveBy(u: Unit, mx: number, my: number) {
   const r = u.K.r;
-  const PZ_LONGE = (CID_R + 3) * (CID_R + 3);
+  const PZ_LONGE = (W.cidade.r + 3) * (W.cidade.r + 3);
   const barra = !u.pz && (u.beast || pzAtiva(u)) && dist2(u.x, u.y, W.cidade.x, W.cidade.y) < PZ_LONGE;
   const c0 = barra ? pzCantos(u.x, u.y, r) : 0;
   const nx = u.x + mx;

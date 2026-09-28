@@ -4,8 +4,8 @@
    ================================================================ */
 import { useEffect, useRef, useState } from "preact/hooks";
 import { G, W } from "../sim/state";
-import { FIRST_NAMES, KINDS, TEAMS, VOCS, VOC_DESC, VOC_MATIZ, type VocKey } from "../sim/data";
-import { SETUP, TAMANHO_MEGA, aplicarNoAtual, mudancasDeMundo, criarHeroi, largar, somaCfg, distribuirTotal, sortearVocacoes, startWorld, type Cfg } from "../sim/session";
+import { KINDS, NOMES_F, NOMES_M, TEAMS, VOCS, VOC_DESC, VOC_MATIZ, nomeAoAcaso, type Sexo, type VocKey } from "../sim/data";
+import { SETUP, TAMANHO_MEGA, TAMANHO_ULTIMATE, JOGADORES_MAX, GUILDA_MAX, MONSTROS_MAX, MONSTROS_MIN, aplicarNoAtual, mudancasDeMundo, criarHeroi, largar, somaCfg, distribuirTotal, distribuirGuilda, desce10, sobe10, mudarTamanho, presetsMonstros, sortearVocacoes, startWorld, type Cfg } from "../sim/session";
 import { PREF, salvarPref, salvarLocalMundo, temMundoLocal, apagarLocal, MUNDO_CHAVE, carregarMundo, mundoDe, baixarJson } from "../sim/save";
 import { corPorMatiz } from "../sim/unit";
 import { clamp } from "../sim/rng";
@@ -15,7 +15,7 @@ import { retratoVitrine } from "../render/portrait";
 import { volumes, iniciarAudio } from "../audio/sfx";
 import { tela, volta, irPara, atualizar, tick, aviso, retrato } from "./store";
 import { Ico } from "./icons";
-import { DoisToques, Lin, Seg, SimNao, clique, recusa } from "./comp";
+import { DoisToques, Lin, Passo, Seg, SimNao, clique, recusa } from "./comp";
 import { retratoDe } from "../render/portrait";
 import { conta, metaNuvem, nuvemAtiva } from "../net/nuvem";
 import { abrirDaNuvem, dataNuvem } from "./conta";
@@ -76,24 +76,32 @@ export function Titulo() {
 export function Heroi() {
   void tick.value;
   const [voc, setVoc] = useState<VocKey>(PREF.vocacao || "knight");
-  const [nome, setNome] = useState(PREF.nome || FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)]);
+  const [sexo, setSexo] = useState<Sexo>(PREF.sexo || "m");
+  const [nome, setNome] = useState(PREF.nome || nomeAoAcaso(PREF.sexo || "m"));
   const [imgs, setImgs] = useState<Record<string, string>>({});
   useEffect(() => {
     /* os retratos saem do renderizador: um por quadro para não travar a abertura */
-    let i = 0;
+    let i = 0, vivo = true;
     const um = () => {
-      if (i >= VOCS.length) return;
+      if (!vivo || i >= VOCS.length) return;
       const k = VOCS[i++];
-      const s = retratoVitrine(k, corPorMatiz(VOC_MATIZ[k]));
-      setImgs((o) => ({ ...o, [k]: s }));
+      const s = retratoVitrine(k, corPorMatiz(VOC_MATIZ[k]), sexo);
+      setImgs((o) => ({ ...o, [k + sexo]: s }));
       requestAnimationFrame(um);
     };
     requestAnimationFrame(um);
-  }, []);
+    return () => { vivo = false; };
+  }, [sexo]);
+  /* trocar o sexo troca o nome sorteado (o digitado fica) */
+  const escolherSexo = (s: Sexo) => {
+    setSexo(s);
+    const base = nome.trim();
+    if (!base || ((s === "f" ? NOMES_M : NOMES_F).indexOf(base) >= 0)) setNome(nomeAoAcaso(s));
+  };
   const comecar = () => {
     const n = nome.trim().slice(0, 18);
-    PREF.nome = n; PREF.vocacao = voc; salvarPref();
-    const u = criarHeroi(voc, n);
+    PREF.nome = n; PREF.vocacao = voc; PREF.sexo = sexo; salvarPref();
+    const u = criarHeroi(voc, n, sexo);
     retrato.value = retratoDe(u);
     irPara("jogo");
     if (!PREF.ajudaVista) aviso("Arraste para andar · toque num inimigo para atacar · a mochila abre os painéis", "#f0cf6e");
@@ -110,7 +118,7 @@ export function Heroi() {
               const K = KINDS[k];
               return (
                 <button key={k} class="voc" aria-pressed={voc === k} onClick={() => { clique(); setVoc(k); }}>
-                  {imgs[k] ? <img src={imgs[k]} alt="" /> : <span class="ph" />}
+                  {imgs[k + sexo] ? <img src={imgs[k + sexo]} alt="" /> : <span class="ph" />}
                   <b>{K.pt}</b>
                   <small>{VOC_DESC[k]}</small>
                   <span class="est">
@@ -123,11 +131,12 @@ export function Heroi() {
               );
             })}
           </div>
+          <Lin rot="Personagem"><Seg itens={[["m", "Masculino"], ["f", "Feminino"]] as [Sexo, string][]} valor={sexo} aoEscolher={escolherSexo} /></Lin>
           <div class="nome">
             <span>Nome</span>
             <input class="fin" maxLength={18} autocomplete="off" spellcheck={false} placeholder="nome do herói" value={nome}
               onInput={(e) => setNome((e.target as HTMLInputElement).value)} onKeyDown={(e) => { if (e.key === "Enter") comecar(); }} />
-            <button class="btn" aria-label="Sortear nome" onClick={() => { clique(); setNome(FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)]); }}><Ico n="dado" s={20} /></button>
+            <button class="btn" aria-label="Sortear nome" onClick={() => { clique(); setNome(nomeAoAcaso(sexo)); }}><Ico n="dado" s={20} /></button>
           </div>
           <p class="dica" style={{ marginTop: "10px" }}>{W.worldLivre ? "Regra do mundo: cada um por si. A cor do herói é sorteada e pode ser trocada na ficha." : "Regra do mundo: guildas. O herói entra na guilda " + TEAMS[0].name + "."}</p>
         </div>
@@ -242,6 +251,16 @@ function LinhaRoster({ c, nome, cor, teto }: { c: Cfg; nome: string; cor: string
     </div>
   );
 }
+/* número exato, de 10 em 10: segurar o botão repete */
+function Exato({ rot, valor, min, max, aoMudar }: { rot: string; valor: number; min: number; max: number; aoMudar: (v: number) => void }) {
+  return (
+    <div class="exato">
+      <span>{rot}<small>de 10 em 10</small></span>
+      <Passo valor={valor} larg={52} podeMenos={valor > min} podeMais={valor < max}
+        menos={() => aoMudar(desce10(valor, min))} mais={() => aoMudar(sobe10(valor, max))} />
+    </div>
+  );
+}
 export function Mundo() {
   void tick.value;
   const suja = () => { SETUP.sujo = true; atualizar(); };
@@ -256,14 +275,21 @@ export function Mundo() {
         <p class="dica">{SETUP.livre ? "Cada um tem a própria cor. Ninguém é aliado fora da equipe montada por convite, mas também ninguém é inimigo até alguém atacar." : "Os membros usam tons parecidos da cor da guilda, se poupam e se curam. Guildas entram em guerra de tempos em tempos."}</p>
         {SETUP.livre ? <>
           <Lin col rot="Aventureiros da IA"><Seg itens={[[8, "8"], [16, "16"], [24, "24"], [32, "32"], [50, "50"]]} valor={somaCfg(SETUP.cfgLivre)} aoEscolher={(v) => { distribuirTotal(v); suja(); }} /></Lin>
-          <LinhaRoster c={SETUP.cfgLivre} nome="Aventureiros da IA" cor="#d9b45c" teto={16} />
+          <Exato rot="Número exato" valor={somaCfg(SETUP.cfgLivre)} min={0} max={JOGADORES_MAX} aoMudar={(v) => { distribuirTotal(v); suja(); }} />
+          <LinhaRoster c={SETUP.cfgLivre} nome="Aventureiros da IA" cor="#d9b45c" teto={40} />
         </> : <>
           <Lin col rot="Número de guildas"><Seg itens={[[2, "2"], [3, "3"], [4, "4"]]} valor={SETUP.guildas} aoEscolher={(v) => { SETUP.guildas = v; suja(); }} /></Lin>
-          {Array.from({ length: SETUP.guildas }, (_, t) => <LinhaRoster key={t} c={SETUP.cfgGuilda[t]} nome={TEAMS[t].name} cor={TEAMS[t].c} teto={12} />)}
+          {Array.from({ length: SETUP.guildas }, (_, t) => <div key={t}>
+            <Exato rot={"Membros · " + TEAMS[t].name} valor={somaCfg(SETUP.cfgGuilda[t])} min={0} max={GUILDA_MAX} aoMudar={(v) => { distribuirGuilda(t, v); suja(); }} />
+            <LinhaRoster c={SETUP.cfgGuilda[t]} nome={TEAMS[t].name} cor={TEAMS[t].c} teto={GUILDA_MAX / 2} />
+          </div>)}
         </>}
         <button class="btn" style={{ width: "100%", marginTop: "6px" }} onClick={() => { clique(); sortearVocacoes(); suja(); }}><Ico n="dado" s={18} />Sortear vocações</button>
-        <Lin col rot="Tamanho do mundo" sub={SETUP.tamanho === TAMANHO_MEGA ? "Mega: " + TAMANHO_MEGA + "² ladrilhos, mais pontos de caça e viagens longas." : undefined}><Seg itens={[[72, "72²"], [96, "96²"], [128, "128²"], [TAMANHO_MEGA, "Mega"]]} valor={SETUP.tamanho} aoEscolher={(v) => { SETUP.tamanho = v; suja(); }} /></Lin>
-        <Lin col rot="Monstros no mundo" sub="Mesmo em Poucos, todas as 20 criaturas aparecem."><Seg itens={[[120, "Poucos"], [220, "Normal"], [340, "Muitos"]]} valor={SETUP.monstros} aoEscolher={(v) => { SETUP.monstros = v; suja(); }} /></Lin>
+        <Lin col rot="Tamanho do mundo" sub={SETUP.tamanho === TAMANHO_ULTIMATE ? "Ultimate: " + TAMANHO_ULTIMATE + "² ladrilhos, o triplo da área do Mega. Cidade murada com lojas e casas, e oito biomas: campos, floresta, pântano, deserto, neve, montanhas, terras malditas e vulcânicas." : SETUP.tamanho === TAMANHO_MEGA ? "Mega: " + TAMANHO_MEGA + "² ladrilhos, mais pontos de caça e viagens longas." : undefined}>
+          <Seg itens={[[72, "72²"], [96, "96²"], [128, "128²"], [TAMANHO_MEGA, "Mega"], [TAMANHO_ULTIMATE, "Ultimate"]]} valor={SETUP.tamanho} aoEscolher={(v) => { mudarTamanho(v); suja(); }} /></Lin>
+        <Lin col rot="Monstros no mundo" sub="Mesmo em Poucos, todas as 25 criaturas aparecem.">
+          <Seg itens={presetsMonstros(SETUP.tamanho).map((v, i) => [v, ["Poucos", "Normal", "Muitos"][i]] as [number, string])} valor={SETUP.monstros} aoEscolher={(v) => { SETUP.monstros = v; suja(); }} /></Lin>
+        <Exato rot="Número exato" valor={SETUP.monstros} min={MONSTROS_MIN} max={MONSTROS_MAX} aoMudar={(v) => { SETUP.monstros = v; suja(); }} />
         <div style={{ height: "8px" }} />
         {SETUP.sujo && <>
           <div class="secao">Onde aplicar as mudanças?</div>

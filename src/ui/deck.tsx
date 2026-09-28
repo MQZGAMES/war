@@ -20,7 +20,8 @@ import { teamAlive } from "../sim/map";
 import { avisoDe, fx } from "../sim/fx";
 import { largar } from "../sim/session";
 import { aplicarFicha, baixarJson, fichaDe, salvarPref } from "../sim/save";
-import { CORES_FICHA } from "../sim/unit";
+import { CORES_FICHA, CABELOS_N, PELES_N } from "../sim/unit";
+import { CABELOS, PELES } from "../render/models/humanos";
 import { clamp } from "../sim/rng";
 import type { Coisa, Item, Pocao, SlotKey, Unit } from "../sim/types";
 import { tick, painel, painelUlt, npcAberto, cheio, abrirDeck, fecharDeck, atualizar, retrato, irPara, type Painel } from "./store";
@@ -383,6 +384,15 @@ function PFicha({ u }: { u: Unit }) {
         <div class="cores">
           {CORES_FICHA.map((p, i) => <button key={i} class={p.h === u.cor.h ? "on" : ""} style={{ background: p.h >= 400 ? `linear-gradient(135deg, ${p.c} 52%, ${p.h === 400 ? p.lo : p.hi} 52%)` : p.c }} disabled={!W.worldLivre} aria-label={p.h === 400 ? "Branca com preto" : p.h === 401 ? "Preta com branco" : "Cor " + (i + 1)}
             onClick={() => { clique(); u.cor = CORES_FICHA[i]; retrato.value = retratoDe(u); atualizar(); }} />)}
+        </div>
+      </Lin>
+      <Lin col rot="Aparência" sub="Sexo, tom de pele e cor do cabelo.">
+        <Seg itens={[["m", "Masculino"], ["f", "Feminino"]] as ["m" | "f", string][]} valor={u.sexo} aoEscolher={(v) => { u.sexo = v; retrato.value = retratoDe(u); atualizar(); }} />
+        <div class="cores">
+          {Array.from({ length: PELES_N }, (_, i) => <button key={"p" + i} class={u.pele === i ? "on" : ""} style={{ background: PELES[i] }} aria-label={"Pele " + (i + 1)}
+            onClick={() => { clique(); u.pele = i; retrato.value = retratoDe(u); atualizar(); }} />)}
+          {Array.from({ length: CABELOS_N }, (_, i) => <button key={"c" + i} class={u.cabelo === i ? "on" : ""} style={{ background: CABELOS[i], borderRadius: "30%" }} aria-label={"Cabelo " + (i + 1)}
+            onClick={() => { clique(); u.cabelo = i; retrato.value = retratoDe(u); atualizar(); }} />)}
         </div>
       </Lin>
       <div class="crow">

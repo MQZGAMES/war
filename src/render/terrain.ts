@@ -6,7 +6,9 @@
 import * as THREE from "three";
 import { W } from "../sim/state";
 import { vnoise } from "../sim/rng";
-import { CID_R } from "../sim/map";
+import { CID_R, foraDaCidade } from "../sim/map";
+import { BIO, BIO_COR, BIO_COR2 } from "../sim/biomas";
+import type { Zona } from "../sim/types";
 import { canvasTex, cor, h2, U } from "./util";
 
 /* quanto cada ladrilho é estrada (0..1): a grama evita as trilhas */
@@ -33,12 +35,18 @@ const TEMA: Record<string, string> = {
   "Savana": "#bfa95a", "Acampamento orc": "#7c6646", "Urso do norte": "#6c8a70", "Ruína antiga": "#7d8468",
   "Ermo": "#948a62", "Horda orc": "#6e5a40", "Colina do touro": "#8e7048", "Bosque negro": "#3c4838",
   "Penhasco": "#7c7b73", "Vale calcinado": "#4a403a", "Toca do dragão": "#5c3c32", "Fenda infernal": "#5e2a26",
-  "Trono do ciclope": "#706e64",
+  "Trono do ciclope": "#706e64", "Brejo das cobras": "#566a3a", "Cemitério": "#5e6258", "Deserto": "#cdb47a",
+  "Cripta": "#4c4650", "Pântano da hidra": "#40503a", "Covil do beemote": "#4e3e3e",
+  "Mangue": "#4a5a36", "Pirâmide": "#c9b074", "Pedreira": "#8a8478", "Pico gelado": "#e2eaf0", "Necrópole": "#4a4252",
 };
 export function temaDaZona(nome: string) { return TEMA[nome] || "#6aa24c"; }
 
 const GRAMA = ["#4c7d3a", "#57893f", "#629545", "#6fa04b"].map(cor);
 const CALCADA = cor("#8e8573"), AREIA = cor("#8a8255"), TRILHA = cor("#9a8058"), TERRA = cor("#6b4f35");
+const BIOC = BIO_COR.map(cor), BIOC2 = BIO_COR2.map(cor);
+/* quanto o relevo de cada bioma sobe (campo, floresta, pântano, deserto,
+   neve, montanha, vulcão, maldito) */
+const RELEVO = [1, 1.1, .35, .6, 1.5, 1.9, 1.4, 1.15];
 
 function distSeg(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
   const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1;
@@ -53,15 +61,29 @@ export function construirTerreno(): THREE.Group {
   const grupo = new THREE.Group();
   grupo.name = "terreno";
   const c = W.cidade;
-  const tc = W.tileCol, solid = W.solid;
+  const tc = W.tileCol, bio = W.bioma.length ? W.bioma : null;
   const agua = (x: number, y: number) => x >= 0 && y >= 0 && x < N && y < N && tc[y * N + x] === 200;
 
+  /* ---------- relevo por bioma (Ultimate): multiplicador e sobra,
+     borrados para a montanha nascer aos poucos, sem degrau ---------- */
+  let mult: Float32Array | null = null, extra: Float32Array | null = null;
+  if (bio) {
+    mult = new Float32Array(N * N); extra = new Float32Array(N * N);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const i = y * N + x, b = bio[i];
+      mult[i] = RELEVO[b];
+      extra[i] = b === BIO.MONTANHA ? Math.abs(vnoise(x * .09 + 11, y * .09 + 5) - .5) * .55
+        : b === BIO.DESERTO ? (Math.sin(x * .33 + vnoise(x * .05, y * .05) * 5) * .5 + .5) * .16
+        : b === BIO.VULCAO ? vnoise(x * .2 + 3, y * .2) * .22 : b === BIO.NEVE ? vnoise(x * .07 + 9, y * .07) * .2 : 0;
+    }
+    borrar(mult, N, 3); borrar(extra, N, 3);
+  }
   /* ---------- alturas ---------- */
   const o = (W.semente % 997) * .37;
   for (let y = 0; y <= N; y++) for (let x = 0; x <= N; x++) {
     let h = vnoise(x * .12 + o, y * .12 + o) * .26 + vnoise(x * .37 + 9, y * .37 + o) * .07;
-    const dc = Math.hypot(x - c.x, y - c.y);
-    const f = Math.max(0, Math.min(1, (dc - (CID_R + 1)) / 3));
+    if (mult && extra) { const i = Math.min(N - 1, y) * N + Math.min(N - 1, x); h = Math.min(.85, h * mult[i] + extra[i]); }
+    const f = Math.max(0, Math.min(1, (foraDaCidade(x, y) - 1) / 3));
     h *= f;
     let na = 0;
     if (agua(x - 1, y - 1)) na++; if (agua(x, y - 1)) na++; if (agua(x - 1, y)) na++; if (agua(x, y)) na++;
@@ -72,86 +94,166 @@ export function construirTerreno(): THREE.Group {
     T.H[y * S + x] = h;
   }
 
-  /* ---------- cor por ladrilho ---------- */
-  const tileCor: THREE.Color[] = new Array(N * N);
-  const zonas = W.zones.filter((z) => !z.errante);
-  const trilhas = zonas.map((z) => {
-    const a = Math.atan2(z.y - c.y, z.x - c.x);
-    return { ax: c.x + Math.cos(a) * (CID_R - .5), ay: c.y + Math.sin(a) * (CID_R - .5), bx: z.x, by: z.y, w: .55 + z.tier * .03 };
-  });
+  /* ---------- cor por ladrilho, em RGB corrido (sem um objeto por ladrilho) ---------- */
+  const R = new Float32Array(N * N), Gc = new Float32Array(N * N), Bc = new Float32Array(N * N);
   const tmp = new THREE.Color();
-  ESTRADA.m = new Float32Array(N * N);
+  const corBase = (x: number, y: number, b: number, v: number, out: THREE.Color) => {
+    if (b === BIO.CAMPO || b === BIO.FLORESTA) {
+      out.copy(GRAMA[v]);
+      const n = vnoise(x * .23 + 3, y * .23 + 7);
+      out.lerp(tmp.set("#8fae4e"), Math.max(0, n - .55) * .9);
+      if (b === BIO.FLORESTA) out.multiplyScalar(.8).lerp(tmp.set("#2f5a36"), .18);
+      return out;
+    }
+    return out.copy(BIOC[b]).lerp(BIOC2[b], vnoise(x * .19 + b * 7, y * .19 + 3));
+  };
+  const cc = new THREE.Color(), soma = new THREE.Color(), cb = new THREE.Color();
+  const conta = new Uint8Array(8);
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     const i = y * N + x, v = tc[i];
-    const cc = new THREE.Color();
     if (v === 200) cc.copy(AREIA);
     else if (v >= 4) cc.copy(CALCADA);
+    else if (!bio) corBase(x, y, BIO.CAMPO, v, cc);
     else {
-      cc.copy(GRAMA[v]);
-      const n = vnoise(x * .23 + 3, y * .23 + 7);
-      cc.lerp(tmp.set("#8fae4e"), Math.max(0, n - .55) * .9);
-      /* tom do ponto de caça */
-      for (const z of zonas) {
-        const d = Math.hypot(x + .5 - z.x, y + .5 - z.y);
-        const r = z.r + 1.2;
-        if (d > r + 2.5) continue;
-        const k = d < r ? .82 : .82 * (1 - (d - r) / 2.5);
-        cc.lerp(tmp.set(temaDaZona(z.name)), k * (.85 + vnoise(x * .5, y * .5) * .15));
+      /* na fronteira, mistura os biomas vizinhos num raio de 2 ladrilhos */
+      conta.fill(0); let dif = 0;
+      const b0 = bio[i];
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const xx = Math.min(N - 1, Math.max(0, x + dx)), yy = Math.min(N - 1, Math.max(0, y + dy));
+        const b = bio[yy * N + xx]; conta[b]++; if (b !== b0) dif = 1;
       }
-      /* trilhas de terra batida da cidade até os pontos de caça */
-      for (const t of trilhas) {
+      if (!dif) corBase(x, y, b0, v, cc);
+      else {
+        soma.setRGB(0, 0, 0);
+        for (let b = 0; b < 8; b++) if (conta[b]) { corBase(x, y, b, v, cb); soma.r += cb.r * conta[b]; soma.g += cb.g * conta[b]; soma.b += cb.b * conta[b]; }
+        cc.setRGB(soma.r / 25, soma.g / 25, soma.b / 25);
+      }
+    }
+    R[i] = cc.r; Gc[i] = cc.g; Bc[i] = cc.b;
+  }
+  const tingir = (i: number, alvo: THREE.Color, k: number) => { R[i] += (alvo.r - R[i]) * k; Gc[i] += (alvo.g - Gc[i]) * k; Bc[i] += (alvo.b - Bc[i]) * k; };
+  const grama = (i: number) => tc[i] < 4;
+  /* tom de cada ponto de caça: percorre só o quadrado do ponto */
+  const zonas = W.zones.filter((z) => !z.errante);
+  const peso = bio ? .3 : .82;
+  for (const z of zonas) {
+    const r = z.r + 1.2, tema = cor(temaDaZona(z.name));
+    for (let y = Math.max(0, Math.floor(z.y - r - 2.5)); y <= Math.min(N - 1, z.y + r + 2.5); y++)
+      for (let x = Math.max(0, Math.floor(z.x - r - 2.5)); x <= Math.min(N - 1, z.x + r + 2.5); x++) {
+        const i = y * N + x;
+        if (!grama(i)) continue;
+        const d = Math.hypot(x + .5 - z.x, y + .5 - z.y);
+        if (d > r + 2.5) continue;
+        const k = d < r ? peso : peso * (1 - (d - r) / 2.5);
+        tingir(i, tema, k * (.85 + vnoise(x * .5, y * .5) * .15));
+      }
+  }
+  /* trilhas de terra batida da cidade (ou do portão) até os pontos de caça */
+  ESTRADA.m = new Float32Array(N * N);
+  for (const t of trilhasDe(zonas)) {
+    const m = t.w + 1.2;
+    for (let y = Math.max(0, Math.floor(Math.min(t.ay, t.by) - m)); y <= Math.min(N - 1, Math.max(t.ay, t.by) + m); y++)
+      for (let x = Math.max(0, Math.floor(Math.min(t.ax, t.bx) - m)); x <= Math.min(N - 1, Math.max(t.ax, t.bx) + m); x++) {
+        const i = y * N + x;
+        if (!grama(i)) continue;
         const wob = (vnoise(x * .31 + t.bx, y * .31 + t.by) - .5) * 1.1;
         const d = distSeg(x + .5 + wob, y + .5 + wob, t.ax, t.ay, t.bx, t.by);
-        if (d < t.w + .6) { const k = Math.max(0, Math.min(1, (t.w + .6 - d) / .8)); cc.lerp(TRILHA, k * .8); ESTRADA.m[i] = Math.max(ESTRADA.m[i], k); }
+        if (d < t.w + .6) { const k = Math.max(0, Math.min(1, (t.w + .6 - d) / .8)); tingir(i, t.pedra ? CALCADA : TRILHA, k * .8); ESTRADA.m[i] = Math.max(ESTRADA.m[i], k); }
       }
-      /* sombra de copa: chão mais escuro em volta das árvores */
-      if (W.tronco[i]) cc.multiplyScalar(.78);
-    }
-    tileCor[i] = cc;
   }
-  /* borda da praça: terra batida em volta do calçamento */
+  /* sombra de copa e borda da cidade (terra batida em volta) */
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-    const d = Math.hypot(x + .5 - c.x, y + .5 - c.y);
-    if (d > CID_R && d < CID_R + 1.6 && tc[y * N + x] < 4) { tileCor[y * N + x].lerp(TRILHA, .55 * (1 - (d - CID_R) / 1.6)); ESTRADA.m[y * N + x] = Math.max(ESTRADA.m[y * N + x], .8); }
+    const i = y * N + x;
+    if (!grama(i)) continue;
+    if (W.tronco[i]) { R[i] *= .78; Gc[i] *= .78; Bc[i] *= .78; }
+    const d = foraDaCidade(x + .5, y + .5);
+    if (d > 0 && d < 1.6) { tingir(i, TRILHA, .55 * (1 - d / 1.6)); ESTRADA.m[i] = Math.max(ESTRADA.m[i], .8); }
   }
 
-  /* ---------- malha ---------- */
-  const pos = new Float32Array(S * S * 3), col = new Float32Array(S * S * 3);
-  for (let y = 0; y <= N; y++) for (let x = 0; x <= N; x++) {
-    const k = y * S + x;
-    const jx = (x > 0 && x < N) ? (h2(x, y) - .5) * .18 : 0, jy = (y > 0 && y < N) ? (h2(y + 99, x) - .5) * .18 : 0;
-    pos[k * 3] = x + jx; pos[k * 3 + 1] = T.H[k]; pos[k * 3 + 2] = y + jy;
-    let r = 0, g = 0, b = 0, n = 0;
-    for (let dy = -1; dy <= 0; dy++) for (let dx = -1; dx <= 0; dx++) {
-      const tx = x + dx, ty = y + dy;
-      if (tx < 0 || ty < 0 || tx >= N || ty >= N) continue;
-      const t = tileCor[ty * N + tx]; r += t.r; g += t.g; b += t.b; n++;
-    }
-    const s = 1 + (h2(x * 3 + 1, y * 5 + 2) - .5) * .12;
-    const hh = T.H[k];
-    const fundo = hh < -.2 ? .55 + (hh + .46) * 1.4 : 1;   // lagoa mais escura no fundo
-    col[k * 3] = r / n * s * fundo; col[k * 3 + 1] = g / n * s * fundo; col[k * 3 + 2] = b / n * s * fundo;
-  }
-  const idx: number[] = [];
-  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-    const a = y * S + x, b = a + 1, cI = a + S, d = cI + 1;
-    if ((x + y) & 1) { idx.push(a, cI, b, b, cI, d); } else { idx.push(a, cI, d, a, d, b); }
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
-  geo.setIndex(idx);
-  geo.computeVertexNormals();
+  /* ---------- malha em blocos de 32×32: a câmera só desenha os que vê ---------- */
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-  const chao = new THREE.Mesh(geo, mat);
-  chao.receiveShadow = true;
-  chao.name = "chao";
-  grupo.add(chao);
+  const BL = 32;
+  for (let by = 0; by < N; by += BL) for (let bx = 0; bx < N; bx += BL) {
+    const w = Math.min(BL, N - bx), hgt = Math.min(BL, N - by), sw = w + 1;
+    const pos = new Float32Array(sw * (hgt + 1) * 3), col = new Float32Array(sw * (hgt + 1) * 3);
+    for (let yy = 0; yy <= hgt; yy++) for (let xx = 0; xx <= w; xx++) {
+      const x = bx + xx, y = by + yy, k = yy * sw + xx, hk = y * S + x;
+      const jx = (x > 0 && x < N) ? (h2(x, y) - .5) * .18 : 0, jy = (y > 0 && y < N) ? (h2(y + 99, x) - .5) * .18 : 0;
+      pos[k * 3] = x + jx; pos[k * 3 + 1] = T.H[hk]; pos[k * 3 + 2] = y + jy;
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let dy = -1; dy <= 0; dy++) for (let dx = -1; dx <= 0; dx++) {
+        const tx = x + dx, ty = y + dy;
+        if (tx < 0 || ty < 0 || tx >= N || ty >= N) continue;
+        const ti = ty * N + tx; r += R[ti]; g += Gc[ti]; b += Bc[ti]; n++;
+      }
+      const s = 1 + (h2(x * 3 + 1, y * 5 + 2) - .5) * .12;
+      const hh = T.H[hk];
+      const fundo = hh < -.2 ? .55 + (hh + .46) * 1.4 : 1;   // lagoa mais escura no fundo
+      col[k * 3] = r / n * s * fundo; col[k * 3 + 1] = g / n * s * fundo; col[k * 3 + 2] = b / n * s * fundo;
+    }
+    const ind: number[] = [];
+    for (let yy = 0; yy < hgt; yy++) for (let xx = 0; xx < w; xx++) {
+      const a = yy * sw + xx, b = a + 1, cI = a + sw, d = cI + 1;
+      if ((bx + xx + by + yy) & 1) ind.push(a, cI, b, b, cI, d); else ind.push(a, cI, d, a, d, b);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    geo.setIndex(ind);
+    geo.computeVertexNormals();
+    geo.computeBoundingSphere();
+    const chao = new THREE.Mesh(geo, mat);
+    chao.receiveShadow = true;
+    chao.name = "chao";
+    grupo.add(chao);
+  }
+  void c;
 
   grupo.add(construirMargem(N, S));
   grupo.add(construirMesa(N));
-  grupo.add(construirAgua(N, S));
+  const ag = construirAgua(N, S);
+  if (ag) grupo.add(ag);
   return grupo;
+}
+/* borrão em caixa separável (raio r), no lugar */
+function borrar(a: Float32Array, N: number, r: number) {
+  const t = new Float32Array(N * N);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    let s = 0, n = 0;
+    for (let k = -r; k <= r; k++) { const xx = x + k; if (xx < 0 || xx >= N) continue; s += a[y * N + xx]; n++; }
+    t[y * N + x] = s / n;
+  }
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    let s = 0, n = 0;
+    for (let k = -r; k <= r; k++) { const yy = y + k; if (yy < 0 || yy >= N) continue; s += t[yy * N + x]; n++; }
+    a[y * N + x] = s / n;
+  }
+}
+/* trilhas: praça redonda liga direto a cada ponto; a cidade murada sai
+   pelos quatro portões em estradas de pedra e só liga os pontos mais perto */
+function trilhasDe(zonas: Zona[]) {
+  const c = W.cidade;
+  const L: { ax: number; ay: number; bx: number; by: number; w: number; pedra?: boolean }[] = [];
+  if (!c.portoes) {
+    for (const z of zonas) {
+      const a = Math.atan2(z.y - c.y, z.x - c.x);
+      L.push({ ax: c.x + Math.cos(a) * (CID_R - .5), ay: c.y + Math.sin(a) * (CID_R - .5), bx: z.x, by: z.y, w: .55 + z.tier * .03 });
+    }
+    return L;
+  }
+  const H = c.meia! + .5;
+  const saidas = c.portoes.map((p) => {
+    const dx = Math.sign(Math.round(p.x - c.x)), dy = Math.sign(Math.round(p.y - c.y));
+    return { x: c.x + dx * (H + 12), y: c.y + dy * (H + 12), gx: c.x + dx * (H - .5), gy: c.y + dy * (H - .5) };
+  });
+  for (const s of saidas) L.push({ ax: s.gx, ay: s.gy, bx: s.x, by: s.y, w: 1.2, pedra: true });
+  const perto = zonas.slice().sort((a, b) => Math.hypot(a.x - c.x, a.y - c.y) - Math.hypot(b.x - c.x, b.y - c.y)).slice(0, 18);
+  for (const z of perto) {
+    let m = saidas[0], md = 1e9;
+    for (const s of saidas) { const d = Math.hypot(z.x - s.x, z.y - s.y); if (d < md) { md = d; m = s; } }
+    L.push({ ax: m.x, ay: m.y, bx: z.x, by: z.y, w: .55 + z.tier * .03 });
+  }
+  return L;
 }
 
 /* ---------- margem da maquete: grama, terra e pedra ---------- */
@@ -254,13 +356,34 @@ function construirMesa(N: number) {
   return grupo;
 }
 
-/* ---------- água: profundidade pela altura do fundo ---------- */
+/* ---------- água: profundidade pela altura do fundo ----------
+   A malha cobre só os ladrilhos de água e a borda deles: o sombreador
+   não roda mais sobre o mapa inteiro para descartar quase tudo */
 function construirAgua(N: number, S: number) {
   const data = new Uint8Array(S * S * 4);
   for (let i = 0; i < S * S; i++) {
     const v = Math.max(0, Math.min(255, Math.round((T.H[i] + 1) * 127.5)));
     data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v; data[i * 4 + 3] = 255;
   }
+  const marca = new Uint8Array(N * N);
+  let tem = false;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    if (W.tileCol[y * N + x] !== 200) continue;
+    tem = true;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const xx = x + dx, yy = y + dy;
+      if (xx >= 0 && yy >= 0 && xx < N && yy < N) marca[yy * N + xx] = 1;
+    }
+  }
+  if (!tem) return null;
+  const pos: number[] = [];
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    if (!marca[y * N + x]) continue;
+    pos.push(x, 0, y, x, 0, y + 1, x + 1, 0, y, x + 1, 0, y, x, 0, y + 1, x + 1, 0, y + 1);
+  }
+  const geoA = new THREE.BufferGeometry();
+  geoA.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geoA.computeBoundingSphere();
   const tex = new THREE.DataTexture(data, S, S, THREE.RGBAFormat);
   tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter;
   tex.needsUpdate = true;
@@ -314,9 +437,8 @@ function construirAgua(N: number, S: number) {
   mat.uniforms.uAlt.value = tex;
   mat.uniforms.uTime = U.uTime;
   mat.uniforms.uNight = U.uNight;
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(N, N), mat);
-  m.rotation.x = -Math.PI / 2;
-  m.position.set(N / 2, T.AGUA, N / 2);
+  const m = new THREE.Mesh(geoA, mat);
+  m.position.set(0, T.AGUA, 0);
   m.renderOrder = 2;
   m.name = "agua";
   return m;

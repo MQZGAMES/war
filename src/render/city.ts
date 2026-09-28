@@ -12,6 +12,9 @@ import { canvasTex, comVento, cor, h2, texBrilho, texDisco, U } from "./util";
 import { criarRig, type Rig } from "./models/rig";
 import { modeloDoNpc } from "./models";
 import { animar, novaPose, type Pose } from "./models/anim";
+import { G } from "../sim/state";
+import { engine } from "./engine";
+import { construirCidadeGrande } from "./cidadeGrande";
 
 export const CIDADE = {
   grupo: null as THREE.Group | null,
@@ -21,9 +24,12 @@ export const CIDADE = {
   anelPZ: null as THREE.Mesh | null,
   lampioes: [] as { x: number; y: number; h: number }[],
   pocas: [] as THREE.Mesh[],
+  /* prédios e trechos de muro que ficam translúcidos quando cobrem o herói */
+  fade: [] as { mesh: THREE.Mesh; x0: number; x1: number; y0: number; y1: number; alt: number }[],
+  janelas: null as THREE.Mesh | null,
 };
 
-function texCalcamento() {
+export function texCalcamento() {
   return canvasTex(512, 512, (g, w, h) => {
     g.fillStyle = "#5e574c"; g.fillRect(0, 0, w, h);
     const cel = 26;
@@ -60,10 +66,11 @@ function obelisco(m: Montador, x: number, y: number, z: number) {
 }
 
 export function construirCidade(): THREE.Group {
+  CIDADE.luzes = []; CIDADE.npcs = []; CIDADE.lampioes = []; CIDADE.pocas = []; CIDADE.fade = []; CIDADE.janelas = null; CIDADE.anelPZ = null;
+  if (W.cidade.forma === "grande") { const gg = construirCidadeGrande(); CIDADE.grupo = gg; return gg; }
   const g = new THREE.Group();
   g.name = "cidade";
   const c = W.cidade;
-  CIDADE.luzes = []; CIDADE.npcs = []; CIDADE.lampioes = []; CIDADE.pocas = [];
   const y0 = .035;
   /* praça */
   const tex = texCalcamento();
@@ -112,7 +119,15 @@ export function construirCidade(): THREE.Group {
   g.add(anel);
   CIDADE.anelPZ = anel;
 
-  /* obelisco */
+  montarObelisco(g);
+  montarLampioes(g);
+  montarBarracas(g);
+  CIDADE.grupo = g;
+  return g;
+}
+/* obelisco, runas e brilho do topo: o ponto de renascimento */
+export function montarObelisco(g: THREE.Group) {
+  const y0 = .035;
   const ob = W.props.find((p) => p.t === "obelisco")!;
   const om = new Montador();
   obelisco(om, ob.x + .5, y0, ob.y + .5);
@@ -144,8 +159,9 @@ export function construirCidade(): THREE.Group {
   runas.position.set(ob.x + .5, y0 + .38, ob.y + .5);
   g.add(runas);
   CIDADE.runas = runas;
-
-  /* lampiões */
+}
+/* lampiões com a poça de luz no chão */
+export function montarLampioes(g: THREE.Group) {
   const lm = new Montador();
   for (const p of W.props.filter((q) => q.t === "lampiao")) {
     const x = p.x + .5, z = p.y + .5, y = alturaEm(x, z);
@@ -169,8 +185,21 @@ export function construirCidade(): THREE.Group {
   const lamp = new THREE.Mesh(lm.geometria(), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
   lamp.castShadow = true;
   g.add(lamp);
-
-  /* barracas dos NPCs */
+}
+/* os NPCs de pé, cada um com o próprio esqueleto */
+export function montarNpcs(g: THREE.Group) {
+  for (const n2 of W.cidade.npcs) {
+    const base = modeloDoNpc(n2.id, n2.cor);
+    const rig = criarRig(base);
+    rig.mesh.position.set(n2.x, alturaEm(n2.x, n2.y) + .035, n2.y);
+    rig.mesh.rotation.y = Math.PI / 2 - n2.fa;
+    g.add(rig.mesh);
+    CIDADE.npcs.push({ rig, pose: novaPose(), x: n2.x, y: n2.y, fa: n2.fa, id: n2.id });
+  }
+}
+/* barracas da praça redonda */
+function montarBarracas(g: THREE.Group) {
+  const c = W.cidade, y0 = .035;
   const bm = new Montador();
   for (const n2 of c.npcs) {
     const fa = n2.fa, bx = n2.x - Math.cos(fa) * .95, bz = n2.y - Math.sin(fa) * .95;
@@ -218,14 +247,8 @@ export function construirCidade(): THREE.Group {
       bm.add(P.caixa(.48, .06, .32), [bx, y + .32, bz], "#e8c35a", 0, rot);
       for (let k = 0; k < 4; k++) bm.add(P.cil(.07, .07, .03, 8), [cx + lado[0] * (k - 1.5) * .12, y + .58 + (k % 2) * .03, cz + lado[1] * (k - 1.5) * .12], "#f2c53d");
     }
-    /* o NPC */
-    const base = modeloDoNpc(n2.id, n2.cor);
-    const rig = criarRig(base);
-    rig.mesh.position.set(n2.x, alturaEm(n2.x, n2.y) + y0, n2.y);
-    rig.mesh.rotation.y = Math.PI / 2 - fa;
-    g.add(rig.mesh);
-    CIDADE.npcs.push({ rig, pose: novaPose(), x: n2.x, y: n2.y, fa, id: n2.id });
   }
+  montarNpcs(g);
   const barracas = new THREE.Mesh(bm.geometria(), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
   barracas.castShadow = true; barracas.receiveShadow = true;
   g.add(barracas);
@@ -248,10 +271,35 @@ export function construirCidade(): THREE.Group {
   const deco = new THREE.Mesh(dm.geometria(), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
   deco.castShadow = true; deco.receiveShadow = true;
   g.add(deco);
-  CIDADE.grupo = g;
-  return g;
 }
 
+/* prédio entre a câmera e o herói fica translúcido */
+const CAM = { cos: 0, sin: 0 };
+function esmaecerPredios(dt: number) {
+  if (!CIDADE.fade.length) return;
+  CAM.cos = Math.cos(engine.cam.yaw); CAM.sin = Math.sin(engine.cam.yaw);
+  const u = G.ctrl || G.sel, vivo = u && !u.dead ? u : null;
+  for (const f of CIDADE.fade) {
+    let quer = 1;
+    if (vivo) {
+      /* o ponto do prédio mais perto do herói, e se o prédio está do lado da câmera */
+      const px = Math.max(f.x0, Math.min(f.x1, vivo.x)), py = Math.max(f.y0, Math.min(f.y1, vivo.y));
+      const dx = px - vivo.x, dy = py - vivo.y;
+      if (dx * dx + dy * dy < 16) {
+        const cx = (f.x0 + f.x1) / 2 - vivo.x, cy = (f.y0 + f.y1) / 2 - vivo.y;
+        const frente = cx * CAM.cos + cy * CAM.sin, lado = Math.abs(-cx * CAM.sin + cy * CAM.cos);
+        const meia = Math.hypot(f.x1 - f.x0, f.y1 - f.y0) / 2;
+        if (frente > -.2 && lado < meia * .8 + .7 && Math.hypot(dx, dy) < f.alt * 1.1 + .5) quer = .3;
+      }
+    }
+    const m = f.mesh.material as THREE.MeshLambertMaterial;
+    const o = m.opacity + (quer - m.opacity) * Math.min(1, dt * 7);
+    if (Math.abs(o - m.opacity) < .002 && o === quer) continue;
+    m.opacity = Math.abs(o - 1) < .01 ? 1 : o;
+    const tr = m.opacity < 1;
+    if (m.transparent !== tr) { m.transparent = tr; m.depthWrite = !tr; m.needsUpdate = true; }
+  }
+}
 export function atualizarCidade(t: number, dt: number, noite: number) {
   if (CIDADE.runas) CIDADE.runas.rotation.z = t * .15;
   for (const s of CIDADE.luzes) {
@@ -262,6 +310,8 @@ export function atualizarCidade(t: number, dt: number, noite: number) {
     s.scale.set(k, k, 1);
   }
   for (const p of CIDADE.pocas) (p.material as THREE.MeshBasicMaterial).opacity = noite * .38 * (.94 + Math.sin(t * 6 + p.position.x) * .06);
+  if (CIDADE.janelas) (CIDADE.janelas.material as THREE.MeshLambertMaterial).emissiveIntensity = noite * 1.1;
+  esmaecerPredios(dt);
   for (const n of CIDADE.npcs) {
     n.pose.t = t + n.x;
     animar(n.rig, n.pose);

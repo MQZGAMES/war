@@ -95,7 +95,7 @@ export function gainXp(u: Unit, v: number) {
 }
 function ganharDespojo(u: Unit, alvo: Unit, peso: number) {
   if (!alvo.beast) return;
-  const m = Math.max(1, Math.round(peso * MOEDA_BICHO * rr(.85, 1.15)));
+  const m = Math.max(1, Math.round(peso * MOEDA_BICHO * (alvo.K.ouro || 1) * rr(.85, 1.15)));
   u.ouro += m;
   if (u === G.ctrl) ui.popOuro(m);
 }
@@ -134,9 +134,9 @@ function largarLoot(t: Unit, lista: { u: Unit; d: number }[], tot: number) {
   if ((t.K.xpVal || 0) < 30 && rnd() < .6) return;
   if (rnd() < LOOT_POCAO) entregar(lista, tot, pocaoItem(rnd() < .55 ? "hp" : "mp", ri(1, 2 + (tier >> 1))), t);
   /* criatura forte solta mais e melhor: força 0..1 pela experiência que vale */
-  const forca = Math.min(1, (t.K.xpVal || 0) * (t.xpMult || 1) / 2000);
-  if (rnd() < LOOT_ITEM_BASE + tier * LOOT_ITEM_TIER + forca * .25) entregar(lista, tot, itemAleatorio(tier, forca), t);
-  if (forca > .5 && rnd() < forca * .25) entregar(lista, tot, itemAleatorio(tier, forca), t);
+  const forca = Math.min(1, (t.K.xpVal || 0) * (t.xpMult || 1) / 2000), lt = t.K.loot || 1;
+  if (rnd() < (LOOT_ITEM_BASE + tier * LOOT_ITEM_TIER + forca * .25) * lt) entregar(lista, tot, itemAleatorio(tier, forca), t);
+  if (forca > .5 && rnd() < forca * .25 * lt) entregar(lista, tot, itemAleatorio(tier, forca), t);
 }
 function entregar(lista: { u: Unit; d: number }[], tot: number, it: Item | { b: string; n: number }, t: Unit) {
   let u: Unit | null = sorteiaDono(lista, tot);
@@ -147,7 +147,7 @@ function entregar(lista: { u: Unit; d: number }[], tot: number, it: Item | { b: 
   if (!u) return false;
   darItem(u, it);
   const rar = BASES[it.b].raro || 0;
-  avisoDe(u, "Loot: " + nomeItem(it) + (rar >= 2 ? " (" + RARO_NOME[rar] + ")" : ""), rar ? RARO_COR[rar] : corItem(it));
+  if (!BASES[it.b].pocao) avisoDe(u, "Loot: " + nomeItem(it) + (rar >= 2 ? " (" + RARO_NOME[rar] + ")" : ""), rar ? RARO_COR[rar] : corItem(it));
   fx({ t: "loot", u, it });
   equiparSeQuiser(u);
   return true;
@@ -256,7 +256,8 @@ const projPool: Projetil[] = [];
 let projId = 1;
 export function alturaTiro(K: KindDef) { return K.alt * (K.beast ? .75 : .72); }
 export function shoot(u: Unit, t: Unit, kind: Projetil["kind"], dmg: number, raio = 0, certo = false) {
-  const sp = kind === "arrow" || kind === "veneno" ? 22 : kind === "bola" || kind === "bolaFogo" ? 14 : kind === "lamina" ? 12 : kind === "raio" ? 24 : 16;
+  const bolao = kind === "bola" || kind === "bolaGelo" || kind === "bolaTrevas";
+  const sp = kind === "arrow" || kind === "veneno" ? 22 : bolao || kind === "bolaFogo" ? 14 : kind === "lamina" ? 12 : kind === "raio" ? 24 : 16;
   const d = Math.max(.5, dist(u.x, u.y, t.x, t.y));
   const p = projPool.pop() || ({} as Projetil);
   p.x = u.x; p.y = u.y; p.tx = t.x; p.ty = t.y; p.d0 = d; p.sp = sp;
@@ -264,7 +265,7 @@ export function shoot(u: Unit, t: Unit, kind: Projetil["kind"], dmg: number, rai
   p.kind = kind; p.dmg = dmg; p.team = u.team; p.src = u; p.tgt = t; p.z = 0; p.raio = raio;
   p.certo = certo ? 1 : 0; p.volta = 0; p.giro = 0;
   if (p.ja) p.ja.length = 0; else p.ja = [];
-  p.h0 = kind === "bola" ? alturaTiro(u.K) * 1.05 : alturaTiro(u.K);
+  p.h0 = bolao ? alturaTiro(u.K) * 1.05 : alturaTiro(u.K);
   p.h1 = t.K.alt * .55;
   p.id = projId++;
   W.projs.push(p);
@@ -298,18 +299,21 @@ export function updateProjectiles(DT: number) {
         const h = p.h0; p.h0 = p.h1; p.h1 = h;
         continue;
       }
-      if (p.kind === "bola" || p.kind === "bolaFogo" || p.kind === "raio") {
+      if (p.kind === "bola" || p.kind === "bolaFogo" || p.kind === "raio" || p.kind === "bolaGelo" || p.kind === "bolaTrevas") {
+        const gelo = p.kind === "bolaGelo", trevas = p.kind === "bolaTrevas";
         const m = queryRadius(p.x, p.y, p.raio);
         for (let k = 0; k < m; k++) {
           const e = QBUF[k];
           if (p.src && !inimigo(p.src, e)) continue;
           const dd = dist(e.x, e.y, p.x, p.y);
           hit(p.src, e, p.dmg * (1 - dd / p.raio * .45), true);
+          /* a bola de neve do yeti deixa quem pega mais lento */
+          if (gelo && !e.dead) e.slow = Math.max(e.slow, 2.2);
         }
         const raio = p.kind === "raio";
-        fx({ t: "impact", x: p.x, y: p.y, kind: p.kind === "bola" ? "bola" : raio ? "raio" : "bolaFogo" });
-        fx({ t: "boom", x: p.x, y: p.y, c: raio ? "#bfe4ff" : "#ff8a2a", r: p.raio, life: .5, kind: raio ? "ice" : "fire" });
-        if (!raio) fx({ t: "scorch", x: p.x, y: p.y, life: 3, r: p.raio * .7 });
+        fx({ t: "impact", x: p.x, y: p.y, kind: p.kind === "bola" ? "bola" : raio ? "raio" : gelo ? "gelo" : trevas ? "trevas" : "bolaFogo" });
+        fx({ t: "boom", x: p.x, y: p.y, c: raio ? "#bfe4ff" : gelo ? "#dff4ff" : trevas ? "#8a5ad8" : "#ff8a2a", r: p.raio, life: .5, kind: raio || gelo ? "ice" : trevas ? "dark" : "fire" });
+        if (!raio && !gelo && !trevas) fx({ t: "scorch", x: p.x, y: p.y, life: 3, r: p.raio * .7 });
       } else if (p.kind === "lamina") {
         /* voltou para a mão */
       } else if (p.kind === "veneno" && t && !t.dead && p.src) {
@@ -445,8 +449,9 @@ export function beastAttack(u: Unit, t: Unit, d: number) {
   if (atk.bola && u.cdA <= 0 && d <= atk.bola.rng && d > 1.0 && losU(u, t)) {
     u.cdA = atk.bola.cd * rr(.85, 1.15);
     u.fogoT = W.simTime + .3; u.swing = .4; u.swMax = .4;
-    fx({ t: "cast", u, k: "bola" });
-    shoot(u, t, "bola", atk.bola.dmg * rr(.9, 1.1), atk.bola.raio);
+    const tp = atk.bola.tipo;
+    fx({ t: "cast", u, k: tp === "gelo" ? "nevasca" : tp === "trevas" ? "trevas" : "bola" });
+    shoot(u, t, tp === "gelo" ? "bolaGelo" : tp === "trevas" ? "bolaTrevas" : "bola", atk.bola.dmg * rr(.9, 1.1), atk.bola.raio);
     return true;
   }
   return false;

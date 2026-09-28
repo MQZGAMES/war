@@ -3,7 +3,7 @@
    o comando. Mundo novo e mundo carregado passam pelo mesmo caminho: a
    semente entra e o gerador roda sem nada consumir o sorteio antes.
    ================================================================ */
-import { FAUNA, KINDS, VOCS, type VocKey } from "./data";
+import { FAUNA, KINDS, VOCS, sexoDoNome, type VocKey } from "./data";
 import { avisoDe, fx, FX } from "./fx";
 import { buildGrid, buildMap, construirCidade, emPZ, ensureConnected, initPath, nearestFree, refreshAlive } from "./map";
 import { clamp, reseed, rnd, rr } from "./rng";
@@ -19,6 +19,8 @@ export type Cfg = Record<VocKey, number>;
 /* Mega: o maior mapa que ainda roda liso no celular (grama e árvores em
    blocos recortados pela câmera; a simulação pesa pelos bichos, não pelo chão) */
 export const TAMANHO_MEGA = 192;
+export { TAMANHO_ULTIMATE } from "./biomas";
+import { TAMANHO_ULTIMATE } from "./biomas";
 export const SETUP = {
   livre: true, guildas: 2, tamanho: 192, monstros: 220,
   cfgLivre: { knight: 8, archer: 8, mage: 8, druid: 8 } as Cfg,
@@ -26,10 +28,23 @@ export const SETUP = {
   sujo: false,
 };
 export const somaCfg = (c: Cfg) => VOCS.reduce((a, k) => a + c[k], 0);
-export function distribuirTotal(n: number) {
+function repartir(n: number): Cfg {
   const c: Cfg = { knight: 0, archer: 0, mage: 0, druid: 0 };
   for (let i = 0; i < n; i++) c[VOCS[i % 4]]++;
-  SETUP.cfgLivre = c;
+  return c;
+}
+export function distribuirTotal(n: number) { SETUP.cfgLivre = repartir(n); }
+export function distribuirGuilda(t: number, n: number) { SETUP.cfgGuilda[t] = repartir(n); }
+/* números exatos, de 10 em 10 (a partir de qualquer valor, cai na dezena) */
+export const JOGADORES_MAX = 150, GUILDA_MAX = 60, MONSTROS_MIN = 10, MONSTROS_MAX = 1500;
+export const sobe10 = (v: number, max: number) => Math.min(max, Math.floor(v / 10) * 10 + 10);
+export const desce10 = (v: number, min: number) => Math.max(min, Math.ceil(v / 10) * 10 - 10);
+/* Poucos, Normal e Muitos acompanham o tamanho do mapa */
+export function presetsMonstros(t: number): [number, number, number] { return t >= TAMANHO_ULTIMATE ? [360, 600, 840] : [120, 220, 340]; }
+export function mudarTamanho(t: number) {
+  const i = presetsMonstros(SETUP.tamanho).indexOf(SETUP.monstros);
+  SETUP.tamanho = t;
+  if (i >= 0) SETUP.monstros = presetsMonstros(t)[i];
 }
 function sortearCfg(n: number): Cfg {
   const c: Cfg = { knight: 0, archer: 0, mage: 0, druid: 0 };
@@ -52,11 +67,12 @@ export function prepararMundo(seed: number) {
   G.sel = null; G.ctrl = null; G.mirandoSlot = -1; SETUP.sujo = false;
   W.units = []; W.squads = []; W.parties = []; W.partyId = 1; W.convitesPend = [];
   FX.length = 0;
-  W.N = clamp(W.worldSize, 48, TAMANHO_MEGA);
+  W.N = clamp(W.worldSize, 48, TAMANHO_ULTIMATE);
   buildMap();
   construirCidade(paleta);
   initPath();
-  ensureConnected([W.cidade, { x: W.N / 2, y: W.N / 2 }]);
+  /* murada: liga o obelisco aos quatro portões (o meio do mapa cai dentro da cidade) */
+  ensureConnected(W.cidade.portoes ? [W.cidade.nasce, ...W.cidade.portoes] : [W.cidade, { x: W.N / 2, y: W.N / 2 }]);
   criarZonas();
   W.guerra = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
   W.mapaVersao++;
@@ -154,7 +170,7 @@ export function startWorld() {
 }
 
 /* ---------- [SYSTEM: HEROI] herói novo nasce no obelisco ---------- */
-export function criarHeroi(kind: VocKey, nome: string) {
+export function criarHeroi(kind: VocKey, nome: string, sexo?: "m" | "f") {
   if (!KINDS[kind] || KINDS[kind].beast) kind = "knight";
   if (G.ctrl) largar();
   const t = 0;
@@ -162,6 +178,7 @@ export function criarHeroi(kind: VocKey, nome: string) {
   const u = makeUnit(t, kind, f[0] + .5, f[1] + .5);
   u.cor = W.worldLivre ? corLivre() : corGuilda(t);
   if (nome) u.name = nome;
+  u.sexo = sexo || sexoDoNome(u.name);
   iniciaMundoUnit(u);
   u.pz = emPZ(u.x, u.y);
   u.fa = rnd() * 6.283; u.moveA = u.fa;

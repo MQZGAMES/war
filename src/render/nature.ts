@@ -7,7 +7,8 @@
 import * as THREE from "three";
 import { W } from "../sim/state";
 import { vnoise } from "../sim/rng";
-import { CID_R } from "../sim/map";
+import { foraDaCidade } from "../sim/map";
+import { BIO } from "../sim/biomas";
 import { ESTRADA, alturaEm, temaDaZona } from "./terrain";
 import { Montador, P, deformar, lamina } from "./geo";
 import { canvasTex, comVento, cor, h2 } from "./util";
@@ -19,20 +20,45 @@ export const EMISSORES: Emissor[] = [];
 export const GRAMAS: THREE.InstancedMesh[] = [];
 /* árvores guardadas para o esmaecimento quando cobrem o herói */
 export const ARVORES: { x: number; y: number; h: number; mesh: THREE.InstancedMesh; i: number; mesh2: THREE.InstancedMesh; i2: number }[] = [];
+/* as árvores por célula de 8×8 ladrilhos: o esmaecimento só olha as de perto */
+export const ARV_CEL = new Map<number, number[]>();
+export const celArvore = (x: number, y: number) => ((y / 8) | 0) * 1000 + ((x / 8) | 0);
 
+/* ponto de caça de cada ladrilho, pintado uma vez por mundo (antes
+   cada tufo de grama percorria a lista inteira de pontos) */
+let ZID = new Int16Array(0), zidV = -1;
+function mapaZonas() {
+  const N = W.N;
+  if (zidV === W.mapaVersao && ZID.length === N * N) return;
+  ZID = new Int16Array(N * N).fill(-1);
+  const D = new Float32Array(N * N).fill(1e9);
+  W.zones.forEach((z, k) => {
+    if (z.errante) return;
+    const r = z.r + 2.2;
+    for (let y = Math.max(0, Math.floor(z.y - r)); y <= Math.min(N - 1, z.y + r); y++)
+      for (let x = Math.max(0, Math.floor(z.x - r)); x <= Math.min(N - 1, z.x + r); x++) {
+        const d = Math.hypot(x + .5 - z.x, y + .5 - z.y), i = y * N + x;
+        if (d < r && d < D[i]) { D[i] = d; ZID[i] = k; }
+      }
+  });
+  zidV = W.mapaVersao;
+}
 const temaEm = (x: number, y: number): Zona | null => {
-  let best: Zona | null = null, bd = 1e9;
-  for (const z of W.zones) {
-    if (z.errante) continue;
-    const d = Math.hypot(x - z.x, y - z.y);
-    if (d < z.r + 2.2 && d < bd) { bd = d; best = z; }
-  }
-  return best;
+  const N = W.N, gx = Math.min(N - 1, Math.max(0, x | 0)), gy = Math.min(N - 1, Math.max(0, y | 0));
+  const k = ZID[gy * N + gx];
+  return k >= 0 ? W.zones[k] : null;
 };
-const QUEIMADO = new Set(["Vale calcinado", "Toca do dragão", "Fenda infernal"]);
-const SOMBRIO = new Set(["Bosque negro", "Teia"]);
-const SECO = new Set(["Savana", "Cerrado", "Ermo"]);
+const bioEm = (x: number, y: number) => {
+  if (!W.bioma.length) return BIO.CAMPO;
+  const N = W.N;
+  return W.bioma[Math.min(N - 1, Math.max(0, y | 0)) * N + Math.min(N - 1, Math.max(0, x | 0))];
+};
+const QUEIMADO = new Set(["Vale calcinado", "Toca do dragão", "Fenda infernal", "Covil do beemote"]);
+const SOMBRIO = new Set(["Bosque negro", "Teia", "Mangue", "Necrópole"]);
+const SECO = new Set(["Savana", "Cerrado", "Ermo", "Pirâmide", "Deserto"]);
 const RUINA = new Set(["Ruína antiga", "Trono do ciclope"]);
+const TUMULO = new Set(["Cemitério", "Cripta", "Necrópole"]);
+const GELO = new Set(["Pico gelado", "Urso do norte"]);
 
 function instancias(geo: THREE.BufferGeometry, mat: THREE.Material, n: number, sombra = true) {
   const m = new THREE.InstancedMesh(geo, mat, Math.max(1, n));
@@ -43,7 +69,38 @@ function instancias(geo: THREE.BufferGeometry, mat: THREE.Material, n: number, s
 }
 const dummy = new THREE.Object3D();
 const tmpC = new THREE.Color();
-function por(m: THREE.InstancedMesh, x: number, y: number, z: number, ry: number, s: number | [number, number, number], c?: THREE.Color) {
+interface Alvo { count: number; setMatrixAt(i: number, m: THREE.Matrix4): void; setColorAt(i: number, c: THREE.Color): void }
+/* enfeites espalhados pelo mapa inteiro (flor, osso, cogumelo…): as
+   instâncias vão para baldes de 32×32 ladrilhos e cada balde vira uma
+   malha recortada pela câmera — antes eram desenhados todos, sempre */
+class Balde implements Alvo {
+  count = 0;
+  private b = new Map<number, { m: number[]; c: number[] }>();
+  private ult: { m: number[]; c: number[] } | null = null;
+  private cor = false;
+  constructor(private geo: THREE.BufferGeometry, private mat: THREE.Material, private sombra: boolean) {}
+  setMatrixAt(_i: number, mt: THREE.Matrix4) {
+    const e = mt.elements, k = ((e[14] / 32) | 0) * 1000 + ((e[12] / 32) | 0);
+    let l = this.b.get(k);
+    if (!l) this.b.set(k, l = { m: [], c: [] });
+    for (let j = 0; j < 16; j++) l.m.push(e[j]);
+    l.c.push(1, 1, 1);
+    this.ult = l;
+  }
+  setColorAt(_i: number, c: THREE.Color) { const l = this.ult!, n = l.c.length; l.c[n - 3] = c.r; l.c[n - 2] = c.g; l.c[n - 1] = c.b; this.cor = true; }
+  fechar(grupo: THREE.Group) {
+    for (const l of this.b.values()) {
+      const n = l.m.length / 16;
+      const im = new THREE.InstancedMesh(this.geo, this.mat, n);
+      im.instanceMatrix.array.set(l.m);
+      if (this.cor) im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(l.c), 3);
+      im.castShadow = this.sombra; im.receiveShadow = true;
+      im.computeBoundingSphere(); im.frustumCulled = true;
+      grupo.add(im);
+    }
+  }
+}
+function por(m: Alvo, x: number, y: number, z: number, ry: number, s: number | [number, number, number], c?: THREE.Color) {
   dummy.position.set(x, y, z);
   dummy.rotation.set(0, ry, 0);
   if (typeof s === "number") dummy.scale.setScalar(s); else dummy.scale.set(s[0], s[1], s[2]);
@@ -77,6 +134,51 @@ function geoPinheiro() {
   m.add(P.cone(.42, .8, 7), [0, 2.05, 0], grad, 0, [0, .8, 0]);
   m.add(P.cone(.24, .5, 6), [0, 2.45, 0], grad);
   return m.geometria();
+}
+function geoPinheiroNeve() {
+  const verde = cor("#2a4f3c"), neve = cor("#f4f8fb");
+  const m = new Montador();
+  const grad = (yb: number) => (_x: number, y: number) => y > yb ? neve : verde;
+  m.add(P.cone(.78, 1.0, 7), [0, 1.0, 0], grad(1.12));
+  m.add(P.cone(.6, .9, 7), [0, 1.55, 0], grad(1.62), 0, [0, .4, 0]);
+  m.add(P.cone(.42, .8, 7), [0, 2.05, 0], grad(2.1), 0, [0, .8, 0]);
+  m.add(P.cone(.24, .5, 6), [0, 2.45, 0], neve);
+  return m.geometria();
+}
+function geoCacto() {
+  const m = new Montador(), c = cor("#4f8a3c"), cl = cor("#6fa850");
+  m.add(P.cil(.13, .15, 1.3, 7), [0, .65, 0], c);
+  m.add(P.esfera(.13, 0), [0, 1.3, 0], cl);
+  m.add(P.cil(.08, .08, .34, 6), [.2, .6, 0], c, 0, [0, 0, Math.PI / 2]);
+  m.add(P.cil(.08, .09, .42, 6), [.34, .82, 0], c);
+  m.add(P.esfera(.08, 0), [.34, 1.03, 0], cl);
+  m.add(P.cil(.07, .07, .26, 6), [-.17, .78, 0], c, 0, [0, 0, Math.PI / 2]);
+  m.add(P.cil(.07, .08, .3, 6), [-.28, .94, 0], c);
+  m.add(P.esfera(.07, 0), [-.28, 1.09, 0], "#e86aa0");
+  return m.geometria();
+}
+function geoMorta() {
+  const m = new Montador(), c = cor("#5a5260"), e = cor("#3e3844");
+  m.add(P.cil(.07, .14, 1.4, 6), [0, .7, 0], c);
+  m.add(P.cil(.04, .06, .7, 5), [.2, 1.25, 0], e, 0, [0, 0, -.9]);
+  m.add(P.cil(.035, .05, .6, 5), [-.18, 1.35, .08], e, 0, [.3, 0, 1]);
+  m.add(P.cil(.03, .045, .5, 5), [0, 1.5, -.16], e, 0, [-.9, 0, 0]);
+  m.add(P.cil(.02, .03, .3, 4), [.36, 1.52, 0], e, 0, [0, 0, -.3]);
+  return m.geometria();
+}
+function geoLapide() {
+  const m = new Montador(), c = cor("#9a9aa2"), e = cor("#6e6e78");
+  m.add(P.caixa(.38, .5, .12), [0, .25, 0], c);
+  m.add(P.cil(.19, .19, .12, 8), [0, .5, 0], c, 0, [Math.PI / 2, 0, 0]);
+  m.add(P.caixa(.05, .2, .02), [0, .36, .07], e);
+  m.add(P.caixa(.14, .05, .02), [0, .4, .07], e);
+  m.add(P.caixa(.5, .08, .3), [0, .04, .08], cor("#5a5a50"));
+  return m.geometria();
+}
+function geoPedraNeve(seed: number) {
+  const neve = cor("#f2f6f9"), lado = cor("#7c8288"), esc = cor("#5e6268");
+  const g = deformar(P.esfera(.5, 1), .22, seed);
+  return new Montador().add(g, [0, .22, 0], (_x, y, _z) => y > .45 ? neve : y > .22 ? lado : esc, 0, [0, 0, 0], [1, .78, 1]).geometria();
 }
 function geoGalhos() {
   const m = new Montador(), c = cor("#2c2420");
@@ -213,8 +315,11 @@ function texLava() {
 export function construirNatureza(qual: "baixa" | "media" | "alta"): THREE.Group {
   const grupo = new THREE.Group();
   grupo.name = "natureza";
-  EMISSORES.length = 0; ARVORES.length = 0; GRAMAS.length = 0;
-  const N = W.N, tc = W.tileCol, c = W.cidade;
+  EMISSORES.length = 0; ARVORES.length = 0; GRAMAS.length = 0; ARV_CEL.clear();
+  const N = W.N, tc = W.tileCol;
+  mapaZonas();
+  /* enfeites crescem com a área do mapa (o Ultimate tem 3× o chão do Mega) */
+  const esc = Math.max(1, N * N / 36864);
   const matV = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   const matCopa = comVento(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), .045, 2.2, .8, true);
   const matPinho = comVento(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), .035, 2.6, .8, true);
@@ -237,6 +342,7 @@ export function construirNatureza(qual: "baixa" | "media" | "alta"): THREE.Group
     }
   };
   const gTronco = geoTronco(), gCopa = geoCopa(), gPinho = geoPinheiro(), gGalhos = geoGalhos();
+  const gPinhoNeve = geoPinheiroNeve(), gCacto = geoCacto(), gMorta = geoMorta();
   const tintas = {
     normal: [cor("#ffffff"), cor("#e8f2d8"), cor("#f4ffe8"), cor("#dfe9cf")],
     sombrio: [cor("#7a6a8a"), cor("#6a7a70"), cor("#80708a")],
@@ -248,12 +354,29 @@ export function construirNatureza(qual: "baixa" | "media" | "alta"): THREE.Group
     const copa = instancias(gCopa.clone(), matCopa, n);
     const pinho = instancias(gPinho.clone(), matPinho, n);
     const galhos = instancias(gGalhos, matV, n);
-    for (const im of [copa, pinho]) im.geometry.setAttribute("aFade", new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, n)), 1).setUsage(THREE.DynamicDrawUsage));
+    const nevado = instancias(gPinhoNeve.clone(), matPinho, n), cacto = instancias(gCacto, matV, n), morta = instancias(gMorta, matV, n);
+    for (const im of [copa, pinho, nevado]) im.geometry.setAttribute("aFade", new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, n)), 1).setUsage(THREE.DynamicDrawUsage));
     for (const p of arvores) {
       const x = p.x + .5 + (h2(p.x, p.y) - .5) * .3, y = p.y + .5 + (h2(p.y, p.x) - .5) * .3;
-      const z = temaEm(x, y), nome = z ? z.name : "";
+      const z = temaEm(x, y), nome = z ? z.name : "", b = bioEm(x, y);
       const s = .85 + p.s * .45, ry = h2(p.x * 3, p.y * 7) * 6.28, hy = alturaEm(x, y);
-      if (QUEIMADO.has(nome)) {                                  // tronco queimado, sem copa
+      if (b === BIO.DESERTO || (SECO.has(nome) && b !== BIO.CAMPO && b !== BIO.FLORESTA)) {   // cacto
+        const i = por(cacto, x, hy, y, ry, .8 + p.s * .5);
+        ARVORES.push({ x, y, h: 1.2 * s, mesh: cacto, i, mesh2: cacto, i2: i });
+        continue;
+      }
+      if (b === BIO.MALDITO && !QUEIMADO.has(nome)) {                                        // árvore morta
+        const i = por(morta, x, hy, y, ry, s);
+        ARVORES.push({ x, y, h: 1.6 * s, mesh: morta, i, mesh2: morta, i2: i });
+        continue;
+      }
+      if (b === BIO.NEVE || GELO.has(nome)) {                                                // pinheiro nevado
+        const t = por(tronco, x, hy, y, ry, s);
+        const i = por(nevado, x, hy, y, ry, s * 1.05);
+        ARVORES.push({ x, y, h: 2.6 * s, mesh: tronco, i: t, mesh2: nevado, i2: i });
+        continue;
+      }
+      if (QUEIMADO.has(nome) || b === BIO.VULCAO) {                  // tronco queimado, sem copa
         const t = por(tronco, x, hy, y, ry, [s * 1.2, s * 1.5, s * 1.2], cor("#3a2e28"));
         const gI = por(galhos, x, hy, y, ry, s);
         ARVORES.push({ x, y, h: 1.6 * s, mesh: tronco, i: t, mesh2: galhos, i2: gI });
@@ -261,7 +384,7 @@ export function construirNatureza(qual: "baixa" | "media" | "alta"): THREE.Group
         continue;
       }
       const t = por(tronco, x, hy, y, ry, s);
-      const tinta = SOMBRIO.has(nome) ? tintas.sombrio : SECO.has(nome) ? tintas.seco : tintas.normal;
+      const tinta = SOMBRIO.has(nome) || b === BIO.PANTANO ? tintas.sombrio : SECO.has(nome) ? tintas.seco : tintas.normal;
       const tc0 = tinta[Math.floor(h2(p.x * 5, p.y) * tinta.length)];
       if (p.s < .6) {
         const i = por(copa, x, hy, y, ry, s, tc0);
@@ -271,29 +394,37 @@ export function construirNatureza(qual: "baixa" | "media" | "alta"): THREE.Group
         ARVORES.push({ x, y, h: 2.6 * s, mesh: tronco, i: t, mesh2: pinho, i2: i });
       }
     }
-    fechar(tronco, copa, pinho, galhos);
+    fechar(tronco, copa, pinho, galhos, nevado, cacto, morta);
   }
+
+  ARVORES.forEach((a, i) => { const k = celArvore(a.x, a.y); let l = ARV_CEL.get(k); if (!l) ARV_CEL.set(k, l = []); l.push(i); });
 
   /* pedras: três variações; ruína e fenda trocam o modelo */
   const gPedra = [0, 1, 2].map((k) => geoPedra(k * 17 + 3)), gColuna = geoColuna(), gObs = geoObsidiana();
+  const gNeve = [0, 1].map((k) => geoPedraNeve(k * 23 + 5)), gLapide = geoLapide();
+  const AREIA = cor("#f0d8a0");
   for (const pedras of porBloco(W.props.filter((p) => p.t === "rock"))) {
     const n = pedras.length;
     const pv = gPedra.map((g) => instancias(g, matV, n));
     const coluna = instancias(gColuna, matV, n);
     const obs = instancias(gObs, matV, n);
+    const pn = gNeve.map((g) => instancias(g, matV, n)), lap = instancias(gLapide, matV, n);
     for (const p of pedras) {
-      const x = p.x + .5, y = p.y + .5, z = temaEm(x, y), nome = z ? z.name : "", hy = alturaEm(x, y);
+      const x = p.x + .5, y = p.y + .5, z = temaEm(x, y), nome = z ? z.name : "", hy = alturaEm(x, y), b = bioEm(x, y);
       const ry = h2(p.x, p.y * 5) * 6.28, s = .9 + p.s * .5;
       if (RUINA.has(nome)) { por(coluna, x, hy, y, ry, .9 + p.s * .3); continue; }
-      if (nome === "Fenda infernal" || nome === "Vale calcinado") {
+      if (TUMULO.has(nome) || (b === BIO.MALDITO && p.s < .7)) { por(lap, x, hy, y, ry, .9 + p.s * .4); continue; }
+      if (b === BIO.NEVE || GELO.has(nome)) { por(pn[Math.floor(p.s * 2) % 2], x, hy, y, ry, [s * 1.15, s * (.9 + p.s * .3), s * 1.15]); continue; }
+      if (b === BIO.DESERTO) { por(pv[Math.floor(p.s * 3) % 3], x, hy, y, ry, [s, s * .8, s], AREIA); continue; }
+      if (nome === "Fenda infernal" || nome === "Vale calcinado" || b === BIO.VULCAO) {
         por(obs, x, hy, y, ry, s);
         if (h2(p.x * 7, p.y) < .5) EMISSORES.push({ x, y, h: .5, tipo: "cristal", r: .5 });
         continue;
       }
-      const big = nome === "Penhasco" || nome === "Trono do ciclope" ? 1.35 : 1;
+      const big = nome === "Penhasco" || nome === "Trono do ciclope" || nome === "Pedreira" || b === BIO.MONTANHA ? 1.35 : 1;
       por(pv[Math.floor(p.s * 3) % 3], x, hy, y, ry, [s * big, s * big * (.9 + p.s * .3), s * big]);
     }
-    fechar(...pv, coluna, obs);
+    fechar(...pv, coluna, obs, ...pn, lap);
   }
 
   /* grama: tufos por ladrilho, em blocos de 16×16 para o recorte da câmera */
@@ -307,20 +438,24 @@ export function construirNatureza(qual: "baixa" | "media" | "alta"): THREE.Group
     for (let y = by; y < Math.min(N, by + B); y++) for (let x = bx; x < Math.min(N, bx + B); x++) {
       const i = y * N + x;
       if (tc[i] === 200 || tc[i] >= 4 || W.solid[i] || W.tronco[i]) continue;
-      const dc = Math.hypot(x + .5 - c.x, y + .5 - c.y);
-      if (dc < CID_R + .8) continue;
+      if (foraDaCidade(x + .5, y + .5) < .8) continue;
       const est = ESTRADA.m[i] || 0;
       if (est > .12 || h2(x * 7 + 3, y * 11 + 5) > rala * (1 - est * 2)) continue;
-      const z = temaEm(x + .5, y + .5), nome = z ? z.name : "";
+      const z = temaEm(x + .5, y + .5), nome = z ? z.name : "", b = bioEm(x + .5, y + .5);
       let d = dens;
-      if (QUEIMADO.has(nome)) d = h2(x, y) < .2 ? 1 : 0;
+      /* deserto, neve e cinza vulcânica quase sem grama */
+      if (b === BIO.DESERTO || b === BIO.VULCAO) d = h2(x, y) < .08 ? 1 : 0;
+      else if (b === BIO.NEVE) d = h2(x, y) < .05 ? 1 : 0;
+      else if (b === BIO.MONTANHA || b === BIO.MALDITO) d = h2(x * 3, y) < .5 ? 1 : 0;
+      else if (QUEIMADO.has(nome)) d = h2(x, y) < .2 ? 1 : 0;
       else if (SECO.has(nome)) d = Math.max(1, dens - 1);
       const n = vnoise(x * .2, y * .2);
       if (n < .28) d = Math.max(0, d - 1);
       for (let k = 0; k < d; k++) {
         const px = x + h2(x * 13 + k, y * 7) , py = y + h2(y * 11 + k, x * 5 + k);
-        const tint = QUEIMADO.has(nome) ? cor("#6a5a4a") : SECO.has(nome) ? cor("#e6d27a")
-          : SOMBRIO.has(nome) ? cor("#7c8a78") : z ? cor(temaDaZona(nome)).multiplyScalar(1.6).lerp(cor("#ffffff"), .35) : cor("#ffffff");
+        const tint = QUEIMADO.has(nome) || b === BIO.VULCAO ? cor("#6a5a4a") : SECO.has(nome) || b === BIO.DESERTO ? cor("#e6d27a")
+          : b === BIO.NEVE ? cor("#e8f0f4") : b === BIO.MALDITO ? cor("#9a8aa0") : b === BIO.PANTANO ? cor("#8a9a58") : b === BIO.MONTANHA ? cor("#b8b89a")
+          : SOMBRIO.has(nome) ? cor("#7c8a78") : z ? cor(temaDaZona(nome)).multiplyScalar(1.6).lerp(cor("#ffffff"), .35) : b === BIO.FLORESTA ? cor("#c8dcb0") : cor("#ffffff");
         tint.multiplyScalar(.85 + h2(px * 9, py * 3) * .3);
         pts.push([px, alturaEm(px, py), py, .7 + h2(px, py) * .7, tint]);
       }
@@ -335,34 +470,38 @@ export function construirNatureza(qual: "baixa" | "media" | "alta"): THREE.Group
   }
 
   /* enfeites por tema */
-  const flor = instancias(geoFlor(), matV, 2400, false);
-  const osso = instancias(geoOsso(), matV, 300);
-  const cog = instancias(geoCogumelo(), matV, 400);
-  const cerca = instancias(geoCerca(), matV, 200);
-  const fog = instancias(geoFogueira(), matV, 60);
-  const est = instancias(geoEstandarte(), comVento(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide }), .05, 1.6, 2), 80);
-  const cri = instancias(geoCristal(), new THREE.MeshBasicMaterial({ vertexColors: true }), 200, false);
+  const MF = Math.round(2400 * esc), MO = Math.round(300 * esc), MC = Math.round(400 * esc), MR = Math.round(200 * esc);
+  const flor = new Balde(geoFlor(), matV, false);
+  const osso = new Balde(geoOsso(), matV, true);
+  const cog = new Balde(geoCogumelo(), matV, true);
+  const cerca = new Balde(geoCerca(), matV, true);
+  const fog = new Balde(geoFogueira(), matV, true);
+  const est = new Balde(geoEstandarte(), comVento(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide }), .05, 1.6, 2), true);
+  const cri = new Balde(geoCristal(), new THREE.MeshBasicMaterial({ vertexColors: true }), false);
   const CF = [cor("#ffffff"), cor("#f7d24a"), cor("#c77dff"), cor("#ff7aa8"), cor("#7ec8ff")];
   for (let y = 1; y < N - 1; y++) for (let x = 1; x < N - 1; x++) {
     const i = y * N + x;
     if (tc[i] === 200 || tc[i] >= 4 || W.solid[i] || W.tronco[i]) continue;
     const px = x + .2 + h2(x, y * 3) * .6, py = y + .2 + h2(y, x * 3) * .6, hy = alturaEm(px, py);
     const r = h2(x * 17, y * 31);
-    const dc = Math.hypot(px - c.x, py - c.y);
-    const z = temaEm(px, py), nome = z ? z.name : "";
-    if (dc < CID_R + .8) continue;
+    const z = temaEm(px, py), nome = z ? z.name : "", b = bioEm(px, py);
+    if (foraDaCidade(px, py) < .8) continue;
+    const florida = b === BIO.CAMPO || b === BIO.FLORESTA;
     if (!z) {
-      if (r < .045 && flor.count < 2400) por(flor, px, hy, py, r * 60, .9 + r * 4, CF[Math.floor(r * 1000) % CF.length]);
+      if (florida && r < .045 && flor.count < MF) por(flor, px, hy, py, r * 60, .9 + r * 4, CF[Math.floor(r * 1000) % CF.length]);
+      else if ((b === BIO.MALDITO || b === BIO.DESERTO) && r < .012 && osso.count < MO) por(osso, px, hy, py, r * 90, .9 + r * 3);
+      else if ((b === BIO.PANTANO || b === BIO.FLORESTA) && r > .985 && cog.count < MC) por(cog, px, hy, py, r * 50, .8 + (r - .985) * 20);
+      else if (b === BIO.VULCAO && r > .985) EMISSORES.push({ x: px, y: py, h: .05, tipo: "brasa", r: 1 });
       continue;
     }
     const t = z.tier;
-    if (t <= 2 && r < .12 && flor.count < 2400) por(flor, px, hy, py, r * 60, 1, CF[Math.floor(r * 1000) % CF.length]);
-    if ((nome === "Pastagem" || nome === "Ninhada") && r > .965 && cerca.count < 200) por(cerca, px, hy, py, Math.floor(r * 100) * .7, 1);
-    if (["Alcateia", "Covil", "Toca do dragão", "Vale calcinado", "Trono do ciclope", "Fenda infernal", "Colina do touro", "Ermo"].includes(nome) && r < .06 && osso.count < 300)
+    if (florida && t <= 2 && r < .12 && flor.count < MF) por(flor, px, hy, py, r * 60, 1, CF[Math.floor(r * 1000) % CF.length]);
+    if ((nome === "Pastagem" || nome === "Ninhada") && r > .965 && cerca.count < MR) por(cerca, px, hy, py, Math.floor(r * 100) * .7, 1);
+    if (["Alcateia", "Covil", "Toca do dragão", "Vale calcinado", "Trono do ciclope", "Fenda infernal", "Colina do touro", "Ermo", "Pirâmide", "Necrópole", "Cemitério"].includes(nome) && r < .06 && osso.count < MO)
       por(osso, px, hy, py, r * 90, .9 + r * 3);
-    if (["Teia", "Bosque negro", "Lameiro", "Toca de ratos", "Urso do norte"].includes(nome) && r > .93 && cog.count < 400) por(cog, px, hy, py, r * 50, .8 + (r - .93) * 6);
+    if (["Teia", "Bosque negro", "Lameiro", "Toca de ratos", "Urso do norte", "Mangue", "Brejo das cobras"].includes(nome) && r > .93 && cog.count < MC) por(cog, px, hy, py, r * 50, .8 + (r - .93) * 6);
     if (QUEIMADO.has(nome) && r > .95) EMISSORES.push({ x: px, y: py, h: .05, tipo: "brasa", r: 1 });
-    if (nome === "Fenda infernal" && r > .9 && cri.count < 200) por(cri, px, hy, py, r * 40, .8 + (r - .9) * 5);
+    if ((nome === "Fenda infernal" || nome === "Covil do beemote") && r > .9 && cri.count < MR) por(cri, px, hy, py, r * 40, .8 + (r - .9) * 5);
   }
   /* acampamentos: fogueira no centro e estandartes na borda */
   for (const z of W.zones) {
@@ -384,15 +523,14 @@ export function construirNatureza(qual: "baixa" | "media" | "alta"): THREE.Group
       }
     }
   }
-  for (const m of [flor, osso, cog, cerca, fog, est, cri]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
-  grupo.add(flor, osso, cog, cerca, fog, est, cri);
+  for (const m of [flor, osso, cog, cerca, fog, est, cri]) m.fechar(grupo);
 
   /* decalques de chão: teias e rachaduras de lava */
   const teia = new THREE.MeshBasicMaterial({ map: texTeia(), transparent: true, depthWrite: false, opacity: .75 });
   const lava = new THREE.MeshBasicMaterial({ map: texLava(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
   for (const z of W.zones) {
     if (z.errante) continue;
-    const n = z.name === "Teia" ? 7 : z.name === "Bosque negro" ? 3 : QUEIMADO.has(z.name) ? 6 : 0;
+    const n = z.name === "Teia" ? 7 : z.name === "Bosque negro" || z.name === "Necrópole" ? 3 : QUEIMADO.has(z.name) ? 6 : 0;
     for (let k = 0; k < n; k++) {
       const a = h2(z.id * 7 + k, k) * 6.28, d = Math.sqrt(h2(k, z.id * 3)) * (z.r + .5);
       const x = z.x + Math.cos(a) * d, y = z.y + Math.sin(a) * d;

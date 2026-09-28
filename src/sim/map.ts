@@ -8,9 +8,14 @@ import { W, idx, inb, type Prop } from "./state";
 import { clamp, dist, dist2, hash2, ri, rnd, rr, vnoise } from "./rng";
 import type { Cidade, Npc, Pt, Unit } from "./types";
 import { FAUNA } from "./data";
+import { CID_MEIA, construirBiomas, ehUltimate, girarQ, planoCidadeGrande } from "./biomas";
 
 export function buildMap() {
   const N = W.N;
+  W.centro = null;
+  /* o Ultimate tem gerador próprio (biomas); os outros mapas seguem o da v54 */
+  if (ehUltimate()) { construirBiomas(); return; }
+  W.bioma = new Uint8Array(0);
   W.solid = new Uint8Array(N * N);
   W.tronco = new Uint8Array(N * N);
   W.blockLOS = new Uint8Array(N * N);
@@ -79,7 +84,41 @@ export function emPZ(x: number, y: number) {
   const gx = x | 0, gy = y | 0, N = W.N;
   return gx >= 0 && gy >= 0 && gx < N && gy < N && W.pzMask[gy * N + gx] === 1;
 }
-export function construirCidade(paleta: (h: number, s: number) => { h: number; c: string; lo: string; hi: string }) {
+/* distância até a borda da cidade (negativa dentro): praça redonda ou muralha */
+export function foraDaCidade(x: number, y: number) {
+  const c = W.cidade;
+  if (c.forma === "grande") return Math.max(Math.abs(x - c.x), Math.abs(y - c.y)) - (c.meia! + .5);
+  return Math.hypot(x - c.x, y - c.y) - c.r;
+}
+type Paletador = (h: number, s: number) => { h: number; c: string; lo: string; hi: string };
+/* a loja de cada NPC fica num quadrante, de frente para a praça */
+function construirCidadeGrande(paleta: Paletador) {
+  const H = CID_MEIA, c0 = W.centro!;
+  const ox = Math.floor(c0.x), oy = Math.floor(c0.y), cx = ox + .5, cy = oy + .5;
+  const { casas, canteiros } = planoCidadeGrande(ox, oy);
+  const { solid, blockLOS } = W;
+  solid[idx(ox, oy)] = 1; blockLOS[idx(ox, oy)] = 1;
+  W.props.push({ t: "obelisco", x: ox, y: oy, s: hash2(ox, oy) });
+  const npcs: Npc[] = [];
+  NPC_TIPOS.forEach((T) => {
+    const q = ["feiticeiro", "comerciante", "ferreiro", "banqueiro"].indexOf(T.id);
+    const [dx, dy] = girarQ(q, 7, 3);
+    const nx = ox + dx, ny = oy + dy;
+    solid[idx(nx, ny)] = 1;
+    const fa = Math.atan2(cy - (ny + .5), cx - (nx + .5));
+    npcs.push({ id: T.id, nome: T.nome, icone: T.icone, placa: T.icone + " " + T.nome, x: nx + .5, y: ny + .5, fa, cor: paleta(T.h, 58), bob: q * 1.7 });
+  });
+  /* lampiões: cantos da praça, anel de ruas e perto dos portões */
+  for (let q = 0; q < 4; q++) for (const [a, b] of [[6, 6], [2, 13], [13, 13], [2, 20]]) {
+    const [dx, dy] = girarQ(q, a, b), x = ox + dx, y = oy + dy;
+    if (!solid[idx(x, y)]) W.props.push({ t: "lampiao", x, y, s: hash2(x, y) });
+  }
+  const D = H + 2.5;
+  W.cidade = { x: cx, y: cy, r: (H + .5) * 1.415, npcs, nasce: { x: cx + 1.9, y: cy + 1.9 }, forma: "grande", meia: H,
+    portoes: [{ x: cx + D, y: cy }, { x: cx, y: cy + D }, { x: cx - D, y: cy }, { x: cx, y: cy - D }], casas, canteiros } as Cidade;
+}
+export function construirCidade(paleta: Paletador) {
+  if (W.centro) { construirCidadeGrande(paleta); return; }
   const N = W.N, { solid, tronco, blockLOS, tileCol, pzMask } = W;
   const m = Math.max(CID_R + 7, N * .16);
   const cx = Math.floor(rr(m, N - m)) + .5, cy = Math.floor(rr(m, N - m)) + .5;
@@ -115,11 +154,20 @@ export function construirCidade(paleta: (h: number, s: number) => { h: number; c
     const lx = Math.floor(cx + Math.cos(a) * (CID_R - .7)), ly = Math.floor(cy + Math.sin(a) * (CID_R - .7));
     if (!solid[idx(lx, ly)]) W.props.push({ t: "lampiao", x: lx, y: ly, s: hash2(lx, ly) });
   }
-  W.cidade = { x: cx, y: cy, r: CID_R, npcs, nasce: { x: cx + 1.9, y: cy + 1.9 } } as Cidade;
+  W.cidade = { x: cx, y: cy, r: CID_R, npcs, nasce: { x: cx + 1.9, y: cy + 1.9 }, forma: "praca" } as Cidade;
 }
 const PORTAO: Pt = { x: 0, y: 0 };
 export function portaoPara(u: Unit) {
-  const c = W.cidade, a = Math.atan2(u.y - c.y, u.x - c.x);
+  const c = W.cidade;
+  if (c.portoes) {
+    /* cidade murada: o portão mais perto, do lado de fora */
+    let m = c.portoes[0], md = 1e9;
+    for (const p of c.portoes) { const d = dist2(u.x, u.y, p.x, p.y); if (d < md) { md = d; m = p; } }
+    const f = nearestFree(m.x, m.y, true);
+    PORTAO.x = f[0] + .5; PORTAO.y = f[1] + .5;
+    return PORTAO;
+  }
+  const a = Math.atan2(u.y - c.y, u.x - c.x);
   const f = nearestFree(c.x + Math.cos(a) * (c.r + 1.6), c.y + Math.sin(a) * (c.r + 1.6));
   PORTAO.x = f[0] + .5; PORTAO.y = f[1] + .5;
   return PORTAO;

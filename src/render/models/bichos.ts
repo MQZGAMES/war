@@ -125,6 +125,24 @@ export function modeloQuad(kind: string): ModeloBase {
       for (let k = 0; k < 3; k++) m.add(P.cone(.018, .06, 3), [s * q.larg * .34 + (k - 1) * .04, .03, q.len * .3 + q.pernaR * 1.6], "#efe6d2", s > 0 ? Q.FL : Q.FR, [Math.PI / 2, 0, 0]);
     }
     m.add(P.esfera(.08, 0), [0, q.alt + .08, -q.len * .5], c1, Q.TAIL);
+  } else if (kind === "crocodile") {
+    q = { len: 1.3, larg: .44, alt: .22, corpoH: .2, pernaR: .05, cabR: .13, cabUp: 0, cabFw: .15 };
+    const c1 = C("#4f6b3a"), c2 = C("#2f4527"), ventre = C("#bdb27c"), dente = C("#f2ecda");
+    corpoQuad(m, q, (_x, y) => y < q.alt - .05 ? ventre : c1);
+    pernas(m, q, c1, c2, 1.2);
+    /* escamas duras em duas fileiras no dorso */
+    for (let i = 0; i < 9; i++) for (const s of [1, -1]) m.add(P.cone(.03, .06, 4), [s * .07, q.alt + q.corpoH * .42, q.len * .36 - i * .1], c2, Q.BODY);
+    const hy = q.alt + .03, hz = q.len * .5;
+    m.add(P.caixa(.22, .11, .2), [0, hy, hz + .04], c1, Q.HEAD);
+    m.add(P.caixa(.15, .06, .38), [0, hy - .01, hz + .32], c1, Q.HEAD);
+    m.add(P.caixa(.14, .04, .36), [0, hy - .065, hz + .3], ventre, Q.HEAD);
+    for (let i = 0; i < 5; i++) for (const s of [1, -1]) m.add(P.cone(.012, .035, 3), [s * .065, hy - .045, hz + .18 + i * .07], dente, Q.HEAD, [Math.PI, 0, 0]);
+    for (const s of [1, -1]) {
+      m.add(P.esfera(.04, 0), [s * .07, hy + .07, hz + .06], c1, Q.HEAD);
+      m.add(P.caixa(.03, .018, .02), [s * .07, hy + .09, hz + .09], "#e6d23a", Q.HEAD);
+    }
+    /* cauda: placas que afinam e balançam */
+    for (let i = 0; i < 7; i++) m.add(P.caixa(.24 - i * .03, .13 - i * .014, .17), [0, q.alt - .02 - i * .006, -q.len * .5 - .02 - i * .15], i % 2 ? c2 : c1, Q.TAIL);
   } else {
     /* leão */
     q = { len: 1.0, larg: .42, alt: .52, corpoH: .42, pernaR: .07, cabR: .18, cabUp: .12, cabFw: .15 };
@@ -147,7 +165,7 @@ export function modeloQuad(kind: string): ModeloBase {
   pontos.boca = { osso: Q.HEAD, p: [0, q.alt + q.cabUp - q.cabR * .2, q.len * .5 + q.cabR * 1.3] };
   pontos.cabeca = { osso: Q.HEAD, p: [0, q.alt + q.cabUp + q.cabR * 1.3, q.len * .5] };
   return base("quad", m.geometria(true), ossosQuad(q), q.alt + q.cabUp + q.cabR * 1.2, Math.max(q.larg, q.len * .6) * .7, pontos,
-    { passo: kind === "cow" ? .8 : 1.2, balanco: 1, cauda: 1 });
+    { passo: kind === "cow" ? .8 : kind === "crocodile" ? .7 : 1.2, balanco: 1, cauda: 1 });
 }
 
 export function modeloGalinha(): ModeloBase {

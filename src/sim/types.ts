@@ -13,7 +13,12 @@ export interface Npc {
   nome: string; icone: string; placa: string;
   x: number; y: number; fa: number; cor: Paleta; bob: number;
 }
-export interface Cidade { x: number; y: number; r: number; npcs: Npc[]; nasce: Pt }
+export interface Cidade {
+  x: number; y: number; r: number; npcs: Npc[]; nasce: Pt;
+  /* "grande": cidade murada do Ultimate (meia largura, casas, portões) */
+  forma?: "praca" | "grande"; meia?: number; portoes?: Pt[];
+  casas?: import("./biomas").Casa[]; canteiros?: [number, number][];
+}
 
 export interface Zona {
   x: number; y: number; r: number; tier: number; name: string;
@@ -60,6 +65,8 @@ export interface Party {
   tatica: string; eleicaoT: number; posto: Pt; puxador: Unit | null; min: number; paciencia: number;
   /* último instante em que alguém do grupo lutou; ponto abandonado por último */
   lutaT?: number; largou?: Zona | null;
+  /* último aviso de troca de ponto dado ao jogador */
+  avisoT?: number;
 }
 
 export interface Unit {
@@ -91,7 +98,8 @@ export interface Unit {
   slow: number; hurt: number; kills: number; pkKills: number; dmg: number; lunge: number; dead: boolean;
   tagT: number; flash: number; squash: number; morteT: number; zonaAtual: Zona | null;
   w: WorldMind | null; party: Party | null; rep: Record<number, { v: number; t: number; nome: string }> | null;
-  convite: { de: Unit; t: number } | null;
+  /* `auto`: convite da equipe automática, sem aviso de envio ou recusa */
+  convite: { de: Unit; t: number; auto?: boolean } | null;
   slots: SpellKey[] | null;
   refil: Refil | null; refilEspera: number; refilAvisoT: number;
   xpMult: number; zona: Zona | null; bando: Bando | null; coleira: number; remover: boolean;
@@ -100,6 +108,8 @@ export interface Unit {
   hitX: number; hitY: number; castT: number; castK: string;
   /* veneno da flecha: dano por segundo até `venAte` */
   venDps: number; venAte: number; venTick: number; venSrc: Unit | null;
+  /* aparência do aventureiro: sexo, tom de pele e cor do cabelo */
+  sexo: "m" | "f"; pele: number; cabelo: number;
   /* criatura: o primeiro aventureiro que a atacou (para o KS) */
   dono: Unit | null; donoT: number;
 }

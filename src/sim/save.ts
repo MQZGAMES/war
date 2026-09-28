@@ -3,7 +3,7 @@
    [SYSTEM: PREFS] — o mesmo formato .json da v54 ("mesa-de-guerra"):
    fichas e mundos salvos na versão antiga abrem aqui.
    ================================================================ */
-import { ATALHOS, NUM_SLOTS, KINDS, PERFIL_NOME, PLANOS, POCAO, PZ_LUTA, SPELLS, WORLD_REBORN, type AtqModo, type SpellKey, type VocKey } from "./data";
+import { ATALHOS, NUM_SLOTS, KINDS, sexoDoNome, PERFIL_NOME, PLANOS, POCAO, PZ_LUTA, SPELLS, WORLD_REBORN, type AtqModo, type SpellKey, type VocKey } from "./data";
 import { darItem, ehPocao, novoItem, pocaoItem, recontar, servePara } from "./items";
 import { BASES, COFRE_N, MOCHILA_N, SLOTS } from "./itemsData";
 import { emPZ, nearestFree } from "./map";
@@ -12,11 +12,11 @@ import { clamp } from "./rng";
 import { G, W } from "./state";
 import { recalcular, sorteiaPlano } from "./stats";
 import type { Coisa, Unit } from "./types";
-import { corGuilda, corLivre, corPorMatiz, makeUnit } from "./unit";
+import { CABELOS_N, PELES_N, corGuilda, corLivre, corPorMatiz, makeUnit } from "./unit";
 import { entrarParty, iniciaMundoUnit, novaParty, povoarZonas, sqBase } from "./world";
 import { atalhosPadrao } from "./spells";
 import { FAUNA } from "./data";
-import { SETUP, TAMANHO_MEGA, prepararMundo, terminarInicio, assumir } from "./session";
+import { SETUP, TAMANHO_ULTIMATE, prepararMundo, terminarInicio, assumir } from "./session";
 import { soltarPreso } from "./ai";
 import { MERCADO } from "./mercado";
 import type { Item } from "./types";
@@ -24,7 +24,7 @@ import type { Item } from "./types";
 /* ---------- preferências no aparelho ---------- */
 export const PREF_CHAVE = "mesaDeGuerra3d.pref", MUNDO_CHAVE = "mesaDeGuerra3d.mundo";
 export const PREF = {
-  cam: "auto" as "auto" | "livre", efeitos: 1, ajudaVista: 0, nome: "", vocacao: "knight" as VocKey,
+  cam: "auto" as "auto" | "livre", efeitos: 1, ajudaVista: 0, nome: "", vocacao: "knight" as VocKey, sexo: "m" as "m" | "f",
   auto: null as unknown as typeof G.AUTO | null,
   qualidade: "auto" as "auto" | "baixa" | "media" | "alta",
   som: .8, musica: .45, vibrar: 1, diaNoite: 1,
@@ -39,6 +39,7 @@ export function carregarPref() {
   if (p.efeitos !== undefined) PREF.efeitos = p.efeitos ? 1 : 0;
   PREF.ajudaVista = p.ajudaVista ? 1 : 0;
   if (typeof p.nome === "string") PREF.nome = p.nome.slice(0, 18);
+  if (p.sexo === "f" || p.sexo === "m") PREF.sexo = p.sexo;
   if (typeof p.vocacao === "string" && KINDS[p.vocacao as VocKey] && !KINDS[p.vocacao as VocKey].beast) PREF.vocacao = p.vocacao as VocKey;
   if (p.auto && typeof p.auto === "object") PREF.auto = p.auto as typeof G.AUTO;
   if (p.qualidade && ["auto", "baixa", "media", "alta"].includes(p.qualidade)) PREF.qualidade = p.qualidade;
@@ -67,7 +68,7 @@ export function fichaDe(u: Unit) {
   const eqp: Record<string, unknown> = {}; for (const s of SLOTS) eqp[s] = u.eqp[s];
   return {
     jogo: "mesa-de-guerra", ficha: FICHA_V, quando: new Date().toISOString(),
-    nome: u.name, vocacao: u.kind, cor: u.cor.h,
+    nome: u.name, vocacao: u.kind, cor: u.cor.h, sexo: u.sexo, pele: u.pele, cabelo: u.cabelo,
     lvl: u.lvl, xp: u.xp, pts: u.pts, manual: !!u.manual, proporcao: u.proporcao,
     attr: { ...u.attr }, plano: u.plano ? u.plano.n : null,
     eqp, mochila: u.mochila.slice(), cofre: u.cofre.slice(), ouro: u.ouro | 0, banco: u.banco | 0,
@@ -93,6 +94,10 @@ export function aplicarFicha(u: Unit, f: any) {
   u.kind = kind; u.K = KINDS[kind];
   u.isKnight = kind === "knight"; u.isArcher = kind === "archer";
   u.name = String(f.nome || u.name).slice(0, 18);
+  /* fichas antigas não têm sexo: vale o do nome */
+  u.sexo = f.sexo === "f" || f.sexo === "m" ? f.sexo : sexoDoNome(u.name);
+  if (typeof f.pele === "number") u.pele = clamp(f.pele | 0, 0, PELES_N - 1);
+  if (typeof f.cabelo === "number") u.cabelo = clamp(f.cabelo | 0, 0, CABELOS_N - 1);
   u.lvl = clamp(f.lvl | 0, 1, 99); u.xp = Math.max(0, +f.xp || 0); u.pts = Math.max(0, f.pts | 0);
   u.manual = !!f.manual;
   u.attr = { str: 0, dex: 0, def: 0, mag: 0, hp: 0, mp: 0 };
@@ -169,8 +174,8 @@ export function carregarMundo(m: any) {
   const s = m.setup || {};
   SETUP.livre = s.livre !== false;
   SETUP.guildas = clamp(s.guildas | 0 || 2, 2, 4);
-  SETUP.tamanho = clamp(s.tamanho | 0 || 72, 48, TAMANHO_MEGA);
-  SETUP.monstros = clamp(s.monstros | 0 || 220, 40, 400);
+  SETUP.tamanho = clamp(s.tamanho | 0 || 72, 48, TAMANHO_ULTIMATE);
+  SETUP.monstros = clamp(s.monstros | 0 || 220, 10, 1500);
   prepararMundo(m.semente >>> 0);
   const nT = W.worldLivre ? 1 : W.guildasN;
   for (let t = 0; t < nT; t++) W.squads.push(sqBase(t, W.cidade.nasce));

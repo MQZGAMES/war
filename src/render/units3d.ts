@@ -19,6 +19,8 @@ import { magiaDe, slotDe } from "../sim/spells";
 interface Vista {
   u: Unit; rig: Rig; chave: string; pose: Pose; andar: number; fasePrev: number;
   morto: boolean; sumir: number; brilho: THREE.Sprite | null; vivoEm: number;
+  /* último quadro em que esteve perto da câmera; quadro em que foi vista */
+  pertoT: number; visto: number;
 }
 export const VISTAS = new Map<number, Vista>();
 const CADAVERES: Vista[] = [];
@@ -61,15 +63,13 @@ function desfazer(v: Vista) {
 function montarVista(u: Unit): Vista {
   const base = modeloDe(u);
   const rig = criarRig(base);
-  raiz.add(rig.mesh);
   let brilho: THREE.Sprite | null = null;
   if (base.pontos.orbe || u.kind === "demon" || u.kind === "cyclops" || u.kind === "dragon") {
-    const cor = u.kind === "druid" ? "#7cff9a" : u.kind === "mage" ? "#7fc4ff" : u.kind === "demon" ? "#ffcc40" : u.kind === "dragon" ? "#ff8a2a" : "#bfe8ff";
+    const cor = u.kind === "druid" ? "#7cff9a" : u.kind === "mage" ? "#7fc4ff" : u.kind === "demon" ? "#ffcc40" : u.kind === "dragon" ? "#ff8a2a" : u.kind === "lich" ? "#c070ff" : "#bfe8ff";
     brilho = new THREE.Sprite(new THREE.SpriteMaterial({ map: texBrilho(), color: cor, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     brilho.scale.setScalar(u.beast ? .5 : .42);
-    raiz.add(brilho);
   }
-  const v: Vista = { u, rig, chave: chaveModelo(u), pose: novaPose(), andar: 0, fasePrev: u.bob, morto: u.dead, sumir: 0, brilho, vivoEm: W.simTime };
+  const v: Vista = { u, rig, chave: chaveModelo(u), pose: novaPose(), andar: 0, fasePrev: u.bob, morto: u.dead, sumir: 0, brilho, vivoEm: W.simTime, pertoT: quadro, visto: quadro };
   v.pose.lado = (u.id & 1) ? 1 : -1;
   return v;
 }
@@ -78,25 +78,39 @@ const tmp = new THREE.Vector3();
 const dummy = new THREE.Object3D();
 const BRANCO = new THREE.Color(1, 1, 1), GELO = new THREE.Color("#9fd8ff"), VENENO = new THREE.Color("#b6f08a"), CLARAO = new THREE.Color();
 
+/* [SYSTEM: PERF] só as figuras perto da câmera ficam na cena: as de longe
+   saem do grafo (seus ossos não são recalculados a cada quadro) e, depois
+   de meio minuto longe, são desmontadas; voltam na hora em que aparecem */
+let quadro = 0;
+const LONGE_DESMONTA = 1800;
 export function atualizarUnidades(alpha: number, dt: number, t: number) {
-  const vistos = new Set<number>();
+  quadro++;
   const cx = engine.cam.x, cy = engine.cam.y;
   const raioVista = 16 * engine.cam.zoom + 10;
   const r2 = raioVista * raioVista;
+  const sombra = engine.cam.zoom < 1.9;
   let ns = 0;
   for (const u of W.units) {
-    vistos.add(u.id);
     let v = VISTAS.get(u.id);
-    const k = chaveModelo(u);
-    if (v && v.chave !== k && !u.dead) { desfazer(v); VISTAS.delete(u.id); v = undefined; }
-    if (!v) { v = montarVista(u); VISTAS.set(u.id, v); }
     const x = u.px + (u.x - u.px) * alpha, y = u.py + (u.y - u.py) * alpha;
     const dx = x - cx, dy = y - cy;
     const perto = dx * dx + dy * dy < r2;
-    v.rig.mesh.visible = perto;
-    v.rig.mesh.castShadow = engine.cam.zoom < 1.9;
-    if (v.brilho) v.brilho.visible = perto && !u.dead;
-    if (!perto) continue;
+    if (v) v.visto = quadro;
+    if (!perto) {
+      if (v) {
+        if (v.rig.mesh.parent) { raiz.remove(v.rig.mesh); if (v.brilho) raiz.remove(v.brilho); }
+        if (quadro - v.pertoT > LONGE_DESMONTA && !u.dead) { desfazer(v); VISTAS.delete(u.id); }
+      }
+      continue;
+    }
+    /* o modelo do herói muda com o equipamento: confere de vez em quando */
+    if (v && !u.dead && !u.beast && ((quadro + u.id) % 15 === 0) && v.chave !== chaveModelo(u)) { desfazer(v); VISTAS.delete(u.id); v = undefined; }
+    if (!v) { v = montarVista(u); VISTAS.set(u.id, v); }
+    v.pertoT = quadro; v.visto = quadro;
+    if (!v.rig.mesh.parent) { raiz.add(v.rig.mesh); if (v.brilho) raiz.add(v.brilho); }
+    v.rig.mesh.visible = true;
+    v.rig.mesh.castShadow = sombra;
+    if (v.brilho) v.brilho.visible = !u.dead;
     posicionar(v, u, x, y, dt, t);
     if (!u.dead && ns < 600) {
       const s = v.rig.base.raio * 2.3;
@@ -108,9 +122,9 @@ export function atualizarUnidades(alpha: number, dt: number, t: number) {
   }
   /* quem saiu da lista vira cadáver (fauna) e some devagar */
   for (const [id, v] of VISTAS) {
-    if (vistos.has(id)) continue;
+    if (v.visto === quadro) continue;
     VISTAS.delete(id);
-    if (v.u.dead) { v.sumir = CORPO_BICHO; CADAVERES.push(v); }
+    if (v.u.dead && v.rig.mesh.parent) { v.sumir = CORPO_BICHO; CADAVERES.push(v); }
     else desfazer(v);
   }
   for (let i = CADAVERES.length - 1; i >= 0; i--) {

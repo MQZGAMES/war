@@ -7,8 +7,8 @@ import * as THREE from "three";
 import { G, W } from "../sim/state";
 import { PREF } from "../sim/save";
 import { engine, atualizarCamera, aplicarQualidade, aoRestaurar, type Qualidade } from "./engine";
-import { construirTerreno } from "./terrain";
-import { construirNatureza, ARVORES, GRAMAS } from "./nature";
+import { alturaEm, construirTerreno } from "./terrain";
+import { construirNatureza, ARVORES, ARV_CEL, GRAMAS, celArvore } from "./nature";
 import { construirCidade, atualizarCidade } from "./city";
 import { atualizarUnidades, iniciarUnidades, limparUnidades } from "./units3d";
 import { atualizarFx, iniciarFx, limparFx } from "./fx3d";
@@ -58,6 +58,7 @@ function montarCenario() {
   cenario = new THREE.Group();
   cenario.add(construirTerreno());
   cenario.add(construirNatureza(engine.qual));
+  ativas.clear();
   cenario.add(construirCidade());
   engine.scene.add(cenario);
   versao = W.mapaVersao;
@@ -108,13 +109,22 @@ function atualizarCeu() {
 }
 
 /* ---------- a árvore na frente do herói fica translúcida ---------- */
-const pa = new THREE.Vector3(), pb = new THREE.Vector3();
+/* só as árvores das células em volta do herói, mais as que ainda estão
+   voltando do translúcido (antes: todas as árvores do mapa, a cada quadro) */
+const ativas = new Set<number>(), cand: number[] = [], mexidos = new Set<THREE.InstancedMesh>();
 function esmaecerArvores(dt: number) {
   const u = G.ctrl || G.sel;
   const alvo = u && !u.dead ? u : null;
   const cosY = Math.cos(engine.cam.yaw), sinY = Math.sin(engine.cam.yaw);
-  const mexidos = new Set<THREE.InstancedMesh>();
-  for (const a of ARVORES) {
+  mexidos.clear(); cand.length = 0;
+  if (alvo) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const l = ARV_CEL.get(celArvore(alvo.x + dx * 8, alvo.y + dy * 8));
+    if (l) for (const i of l) cand.push(i);
+  }
+  for (const i of ativas) if (cand.indexOf(i) < 0) cand.push(i);
+  for (const ia of cand) {
+    const a = ARVORES[ia];
+    if (!a) { ativas.delete(ia); continue; }
     const attr = a.mesh2.geometry.getAttribute("aFade") as THREE.InstancedBufferAttribute | undefined;
     if (!attr) continue;
     let quer = 0;
@@ -130,10 +140,10 @@ function esmaecerArvores(dt: number) {
     if (Math.abs(atual - quer) > .005) {
       attr.setX(a.i2, atual + (quer - atual) * Math.min(1, dt * 6));
       mexidos.add(a.mesh2);
-    }
+      ativas.add(ia);
+    } else if (quer === 0) { if (atual !== 0) { attr.setX(a.i2, 0); mexidos.add(a.mesh2); } ativas.delete(ia); }
   }
   for (const m of mexidos) (m.geometry.getAttribute("aFade") as THREE.InstancedBufferAttribute).needsUpdate = true;
-  void pa; void pb;
 }
 
 let tAcum = 0;
@@ -142,6 +152,8 @@ export function desenharQuadro(dt: number, alpha: number) {
   if (versao !== W.mapaVersao) montarCenario();
   tAcum += dt;
   U.uTime.value = tAcum;
+  /* a mira da câmera sobe e desce com o relevo, sem tranco */
+  engine.cam.h += (alturaEm(engine.cam.x, engine.cam.y) - engine.cam.h) * Math.min(1, dt * 4);
   atualizarCamera(dt);
   atualizarCeu();
   atualizarCidade(tAcum, dt, ceu.noite);

@@ -181,15 +181,17 @@ function criarProj(kind: string): VistaProj {
     g.add(gira);
     m = g;
   } else {
-    const cor = kind === "fire" ? "#ffb04a" : kind === "ice" ? "#bfeaff" : kind === "dark" ? "#b070ff" : kind === "raio" ? "#9fd0ff" : "#ff7a2a";
+    const cor = kind === "fire" ? "#ffb04a" : kind === "ice" || kind === "bolaGelo" ? "#bfeaff" : kind === "dark" || kind === "bolaTrevas" ? "#b070ff" : kind === "raio" ? "#9fd0ff" : "#ff7a2a";
     const g = new THREE.Group();
     if (kind === "ice") g.add(new THREE.Mesh(new THREE.OctahedronGeometry(.12, 0), new THREE.MeshBasicMaterial({ color: "#e8f8ff" })));
     else if (kind === "raio") g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.09, 0), new THREE.MeshBasicMaterial({ color: "#ffffff" })));
     else if (kind === "bolaFogo") g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.15, 1), new THREE.MeshBasicMaterial({ color: "#fff2c0" })));
     else if (kind === "dark") g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.13, 1), new THREE.MeshBasicMaterial({ color: "#0a0410" })));
+    else if (kind === "bolaGelo") g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.17, 1), new THREE.MeshLambertMaterial({ color: "#f4fbff", emissive: "#7fb8e0", emissiveIntensity: .5, flatShading: true })));
+    else if (kind === "bolaTrevas") g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.18, 1), new THREE.MeshBasicMaterial({ color: "#140620" })));
     else g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(kind === "bola" ? .2 : .1, 1), new THREE.MeshBasicMaterial({ color: "#fff2c0" })));
     brilho = new THREE.Sprite(new THREE.SpriteMaterial({ map: texBrilho(), color: cor, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
-    brilho.scale.setScalar(kind === "bola" ? 1.3 : kind === "bolaFogo" ? 1.05 : kind === "raio" ? .9 : kind === "dark" ? .8 : .65);
+    brilho.scale.setScalar(kind === "bola" ? 1.3 : kind === "bolaFogo" || kind === "bolaTrevas" ? 1.05 : kind === "bolaGelo" ? .8 : kind === "raio" ? .9 : kind === "dark" ? .8 : .65);
     brilho.renderOrder = 7;
     raiz.add(brilho);
     m = g;
@@ -333,10 +335,12 @@ function tratar(e: FxEv) {
     case "blood": {
       const u = e.u;
       if (!perto(u.x, u.y)) break;
-      const cor = u.kind === "spider" || u.kind === "scorpion" ? "#6ab040" : u.kind === "demon" ? "#ffb040" : u.kind === "skeleton" ? "#e8e2cc" : u.kind === "hydra" || u.kind === "snake" ? "#7a9a30" : "#b0201c";
+      const cor = u.kind === "spider" || u.kind === "scorpion" ? "#6ab040" : u.kind === "demon" ? "#ffb040" : u.kind === "skeleton" ? "#e8e2cc"
+        : u.kind === "hydra" || u.kind === "snake" ? "#7a9a30" : u.kind === "mummy" ? "#c8b890" : u.kind === "golem" ? "#8a8478" : u.kind === "lich" ? "#9a70c0" : "#b0201c";
       const dx = e.src ? u.x - e.src.x : 0, dy = e.src ? u.y - e.src.y : 0, l = Math.hypot(dx, dy) || 1;
       ALFA.emitir(u.x, peito(u), u.y, { n: e.n, vx: dx / l * 1.2, vz: dy / l * 1.2, vy: 1.2, esp: 1.1, vida: .55, tam: .1, tamFim: .06, cor, grav: 9 });
-      if (Math.random() < .35) decal(u.kind === "demon" ? "queimado" : "sangue", u.x + dx / l * .3, u.y + dy / l * .3, .3 + Math.random() * .2, 6);
+      const seco = u.kind === "skeleton" || u.kind === "mummy" || u.kind === "lich";
+      if (!seco && Math.random() < .35) decal(u.kind === "demon" ? "queimado" : u.kind === "golem" ? "rachadura" : "sangue", u.x + dx / l * .3, u.y + dy / l * .3, .3 + Math.random() * .2, 6);
       break;
     }
     case "levelup": {
@@ -390,7 +394,7 @@ function tratar(e: FxEv) {
     }
     case "shoot": {
       const u = e.u;
-      const n = e.kind === "arrow" || e.kind === "veneno" ? "flecha" : e.kind === "fire" || e.kind === "bola" || e.kind === "bolaFogo" ? "fogo" : e.kind === "ice" || e.kind === "raio" ? "gelo" : e.kind === "lamina" ? "lamina" : "trevas";
+      const n = e.kind === "arrow" || e.kind === "veneno" ? "flecha" : e.kind === "fire" || e.kind === "bola" || e.kind === "bolaFogo" ? "fogo" : e.kind === "ice" || e.kind === "raio" || e.kind === "bolaGelo" ? "gelo" : e.kind === "lamina" ? "lamina" : "trevas";
       som(n, volume(u.x, u.y) * .8);
       break;
     }
@@ -429,6 +433,25 @@ function impacto(x: number, y: number, kind: string) {
     decal("queimado", x, y, R * .45, 3);
     if (vol > .2 && PREF.efeitos) tremerCamera(1.4 * vol);
     som("trovao", vol);
+    return;
+  }
+  if (kind === "gelo") {
+    /* bola de neve estourando: flocos e um anel frio, sem fogo */
+    ADD.emitir(x, h + .4, y, { n: 34, raio: .4, esp: 1.8, vy: 1.4, vida: .7, tam: .2, tamFim: .04, cor: "#ffffff", cor2: "#8fc8f0", grav: 3 });
+    ALFA.emitir(x, h + .3, y, { n: 8, raio: .6, esp: .4, vida: 1, tam: .6, tamFim: 1.1, cor: "#eef8ff", alfa: .45 });
+    anel(x, y, "#dff4ff", 1.6, .45, .3);
+    decal("gelo", x, y, 1, 4);
+    som("gelo", vol);
+    return;
+  }
+  if (kind === "trevas") {
+    /* bola de trevas do lich: fumaça roxa e brilho escuro */
+    ADD.emitir(x, h + .4, y, { n: 36, esp: 2.2, espY: 1.2, vy: 1, vida: .6, tam: .35, tamFim: .05, cor: "#e0b0ff", cor2: "#5a1a8a", arrasto: 2.5 });
+    ALFA.emitir(x, h + .4, y, { n: 12, raio: .8, vy: .8, esp: .5, vida: 1.3, tam: .8, tamFim: 1.5, cor: "#1a0a28", alfa: .6 });
+    anel(x, y, "#b070ff", 2.2, .45, .3);
+    lampejo(x, y, .5, "#c080ff", .4, 5, .3);
+    clarao(x, y, 1, "#a060ff", 9, .5, 9);
+    som("trevas", vol);
     return;
   }
   if (kind === "meteoro" || kind === "bola" || kind === "bolaFogo") {
@@ -501,9 +524,9 @@ export function atualizarFx(dt: number, alpha: number, t: number, noite: number)
     if (p.kind === "raio") ADD.emitir(p.x + (Math.random() - .5) * .3, hy + (Math.random() - .5) * .3, p.y + (Math.random() - .5) * .3, { n: 2, esp: .8, vida: .12, tam: .09, cor: "#ffffff", cor2: "#6ab8ff" });
     if (v.brilho) {
       v.brilho.position.copy(v.m.position);
-      const cor = p.kind === "fire" ? ["#fff0c0", "#ff5a10"] : p.kind === "ice" ? ["#ffffff", "#5ab0ff"] : p.kind === "raio" ? ["#ffffff", "#4a9aff"] : p.kind === "dark" ? ["#c080ff", "#1a0028"] : ["#fff0b0", "#ff4000"];
-      if (p.kind === "dark") ALFA.emitir(p.x, hy, p.y, { n: 1, esp: .15, vida: .5, tam: .35, tamFim: .6, cor: "#1a0a28", alfa: .7 });
-      const grande = p.kind === "bola" ? 1 : p.kind === "bolaFogo" ? .7 : 0;
+      const cor = p.kind === "fire" ? ["#fff0c0", "#ff5a10"] : p.kind === "ice" || p.kind === "bolaGelo" ? ["#ffffff", "#5ab0ff"] : p.kind === "raio" ? ["#ffffff", "#4a9aff"] : p.kind === "dark" || p.kind === "bolaTrevas" ? ["#c080ff", "#1a0028"] : ["#fff0b0", "#ff4000"];
+      if (p.kind === "dark" || p.kind === "bolaTrevas") ALFA.emitir(p.x, hy, p.y, { n: 1, esp: .15, vida: .5, tam: p.kind === "dark" ? .35 : .5, tamFim: .6, cor: "#1a0a28", alfa: .7 });
+      const grande = p.kind === "bola" ? 1 : p.kind === "bolaFogo" || p.kind === "bolaTrevas" ? .7 : p.kind === "bolaGelo" ? .5 : 0;
       ADD.emitir(p.x, hy, p.y, { n: grande ? (grande === 1 ? 3 : 2) : 1, esp: .2, vida: grande ? .45 : .3, tam: grande ? .5 * grande + .1 : .22, tamFim: .03, cor: cor[0], cor2: cor[1] });
     }
   }
@@ -579,6 +602,8 @@ export function atualizarFx(dt: number, alpha: number, t: number, noite: number)
         if (Math.random() < passo * 3 * em.r) ADD.emitir(em.x, h, em.y, { n: 1, raio: em.r, vy: .9, esp: .3, vida: 1.8, tam: .1, tamFim: .02, cor: "#ffb040", cor2: "#ff2000" });
       } else if (em.tipo === "cristal") {
         if (Math.random() < passo * 2) ADD.emitir(em.x, h, em.y, { n: 1, raio: .3, vy: .4, esp: .1, vida: 1.2, tam: .2, tamFim: .02, cor: "#ff6a4a" });
+      } else if (em.tipo === "fumaca") {
+        if (Math.random() < passo * 1.4) ALFA.emitir(em.x, h, em.y, { n: 1, raio: .05, vy: .55, esp: .08, vida: 2.4, tam: .2, tamFim: .75, cor: "#8a8680", alfa: .32 });
       } else if (em.tipo === "vagalume" && noite > .35) {
         if (Math.random() < passo * 1.5 * noite) ADD.emitir(em.x, h, em.y, { n: 1, raio: em.r, raioY: .6, esp: .3, vida: 3, vidaVar: .6, tam: .12, tamFim: .1, cor: "#e8ff80", cor2: "#80ff40", alfa: .9 });
       }

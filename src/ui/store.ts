@@ -40,7 +40,11 @@ export const popOuro = signal({ v: 0, id: 0 });
 let avisoId = 1;
 export function aviso(txt: string, cor = "#e9e2d0") {
   const agora = performance.now();
-  const l = avisos.value.filter((a) => a.ate > agora).slice(-3);
+  const l = avisos.value.filter((a) => a.ate > agora);
+  /* o mesmo texto ainda na tela não empilha de novo: só ganha tempo */
+  const ja = l.find((a) => a.txt === txt);
+  if (ja) { ja.ate = agora + 2800; avisos.value = l; return; }
+  while (l.length > 3) l.shift();
   l.push({ id: avisoId++, txt, cor, ate: agora + 2800 });
   avisos.value = l;
 }

@@ -20,6 +20,7 @@ import { goTo, makeUnit, setState } from "./unit";
 import { unitThink, R_APOIO, R_FRENTE, R_FUNDO } from "./ai";
 import { caveiraRelogio } from "./pk";
 import { mercadoPasso } from "./mercado";
+import { BIO, biomaEm } from "./biomas";
 
 /* ---------- modelos de ponto de caça por faixa (1..7) ---------- */
 export const ZONAS: { n: string; tier: number; sp: Partial<Record<KindKey, number>> }[] = [
@@ -50,52 +51,105 @@ export const ZONAS: { n: string; tier: number; sp: Partial<Record<KindKey, numbe
   { n: "Toca do dragão", tier: 7, sp: { dragon: 2, troll: 1 } },
   { n: "Fenda infernal", tier: 7, sp: { demon: 1, dragon: 1 } },
   { n: "Trono do ciclope", tier: 7, sp: { cyclops: 3, minotaur: 1 } },
+  { n: "Mangue", tier: 3, sp: { crocodile: 2, snake: 3 } },
+  { n: "Pirâmide", tier: 4, sp: { mummy: 3, scorpion: 2 } },
+  { n: "Pedreira", tier: 5, sp: { golem: 2, troll: 1 } },
+  { n: "Pico gelado", tier: 6, sp: { yeti: 2, wolf: 3 } },
+  { n: "Necrópole", tier: 7, sp: { lich: 1, vampire: 1, skeleton: 3 } },
 ];
 export const COR_TIER = ["#8fd6a0", "#b5d67f", "#dccf6a", "#e6b43a", "#e68a3a", "#e65f3f", "#d13a5a"];
 export function corTier(t: number) { return COR_TIER[clamp((t | 0) - 1, 0, 6)]; }
 /* mais pontos fáceis perto da cidade: todo mundo começa no nível 1 */
 const COTA_TIER = [.22, .2, .16, .13, .11, .1, .08];
-function modeloDaZona(tier: number) {
+/* onde cada ponto de caça combina no Ultimate (bioma do lugar) */
+const B = BIO;
+const BIO_ZONA: Record<string, number[]> = {
+  "Pastagem": [B.CAMPO], "Brejo das cobras": [B.PANTANO, B.CAMPO], "Cemitério": [B.MALDITO, B.CAMPO], "Deserto": [B.DESERTO],
+  "Cripta": [B.MALDITO], "Pântano da hidra": [B.PANTANO], "Covil do beemote": [B.VULCAO, B.MONTANHA],
+  "Toca de ratos": [B.CAMPO, B.FLORESTA], "Ninhada": [B.CAMPO], "Alcateia": [B.FLORESTA, B.NEVE, B.CAMPO],
+  "Lameiro": [B.PANTANO, B.FLORESTA, B.CAMPO], "Teia": [B.FLORESTA, B.PANTANO], "Cerrado": [B.CAMPO, B.DESERTO],
+  "Covil": [B.FLORESTA, B.NEVE], "Savana": [B.DESERTO, B.CAMPO], "Acampamento orc": [B.FLORESTA, B.MONTANHA, B.CAMPO],
+  "Urso do norte": [B.NEVE, B.FLORESTA], "Ruína antiga": [B.CAMPO, B.DESERTO, B.MALDITO], "Ermo": [B.MONTANHA, B.DESERTO],
+  "Horda orc": [B.MONTANHA, B.FLORESTA], "Colina do touro": [B.MONTANHA, B.DESERTO], "Bosque negro": [B.FLORESTA, B.MALDITO],
+  "Penhasco": [B.MONTANHA, B.NEVE], "Vale calcinado": [B.VULCAO], "Toca do dragão": [B.VULCAO, B.MONTANHA],
+  "Fenda infernal": [B.VULCAO], "Trono do ciclope": [B.MONTANHA, B.NEVE],
+  "Mangue": [B.PANTANO], "Pirâmide": [B.DESERTO], "Pedreira": [B.MONTANHA], "Pico gelado": [B.NEVE], "Necrópole": [B.MALDITO],
+};
+/* quantas vezes cada modelo já saiu neste mundo: o repetido perde peso,
+   e assim os 32 tipos de ponto (e as 25 criaturas) aparecem mais */
+const USOS: Record<string, number> = {};
+const pesoUso = (n: string) => 1 / (1 + (USOS[n] || 0) * .8);
+function usar<T extends { n: string }>(z: T) { USOS[z.n] = (USOS[z.n] || 0) + 1; return z; }
+function modeloDaZona(tier: number, bio = -1) {
+  if (bio >= 0) {
+    /* no Ultimate: os pontos que combinam com o bioma, na faixa certa
+       (peso 3) ou uma acima ou abaixo (peso 1); a variedade aparece sem
+       fugir da dificuldade da distância */
+    let soma = 0, md = 99;
+    const cand: [typeof ZONAS[number], number][] = [];
+    for (const z of ZONAS) {
+      if ((BIO_ZONA[z.n] || [B.CAMPO]).indexOf(bio) < 0) continue;
+      const d = Math.abs(z.tier - tier);
+      md = Math.min(md, d);
+      if (d <= 1) { const w = (d ? 1 : 3) * pesoUso(z.n); cand.push([z, w]); soma += w; }
+    }
+    if (cand.length) { let r = rnd() * soma; for (const [z, w] of cand) { r -= w; if (r <= 0) return usar(z); } return usar(cand[0][0]); }
+    if (md <= 2) for (const z of ZONAS) if ((BIO_ZONA[z.n] || [B.CAMPO]).indexOf(bio) >= 0 && Math.abs(z.tier - tier) === md) return usar(z);
+  }
   const L = ZONAS.filter((z) => z.tier === tier);
-  return L[Math.floor(rnd() * L.length)];
+  let soma = 0;
+  for (const z of L) soma += pesoUso(z.n);
+  let r = rnd() * soma;
+  for (const z of L) { r -= pesoUso(z.n); if (r <= 0) return usar(z); }
+  return usar(L[L.length - 1]);
 }
 export function criarZonas() {
   W.zones = [];
-  const c = W.cidade, N = W.N;
-  const alvo = clamp(Math.round(N * N / 470), 9, N > 150 ? 50 : 30);
+  for (const k in USOS) delete USOS[k];
+  const c = W.cidade, N = W.N, CR = c.r;
+  /* quantos pontos: pelo tamanho do mapa e pelo número de criaturas (uns
+     5 bichos por ponto), para não sobrar ponto vazio nem faltar chão */
+  const alvo = clamp(Math.round(Math.min(N * N / 470, W.worldBeastCap / 4.4)), 9, N > 150 ? 150 : 30);
   const dMax = Math.max(dist(c.x, c.y, 3, 3), dist(c.x, c.y, N - 3, 3), dist(c.x, c.y, 3, N - 3), dist(c.x, c.y, N - 3, N - 3));
   const cru: { x: number; y: number; r: number; dT: number }[] = [];
-  for (let tent = 0; tent < alvo * 80 && cru.length < alvo; tent++) {
-    const a = rnd() * 6.283, d = CID_R + 5 + Math.pow(rnd(), .85) * (dMax - CID_R - 8);
-    const x = c.x + Math.cos(a) * d, y = c.y + Math.sin(a) * d;
-    if (x < 5 || y < 5 || x > N - 5 || y > N - 5) continue;
-    const k = clamp((d - CID_R - 5) / (dMax - CID_R - 8), 0, 1);
+  /* amostragem do melhor candidato: cada ponto novo nasce no lugar mais
+     longe dos que já existem, então o mapa fica coberto por igual */
+  for (let tent = 0; tent < alvo * 3 && cru.length < alvo; tent++) {
+    let bx = 0, by = 0, bd = 0, bs = -1e9;
+    for (let k = 0; k < 16; k++) {
+      const x = rr(5, N - 5), y = rr(5, N - 5), d = dist(x, y, c.x, c.y);
+      if (d < CR + 5 || W.solid[(y | 0) * N + (x | 0)]) continue;
+      let m = 1e9;
+      for (const z of cru) m = Math.min(m, dist(x, y, z.x, z.y) - z.r);
+      if (m > bs) { bs = m; bx = x; by = y; bd = d; }
+    }
+    if (bs === -1e9) continue;
+    const k = clamp((bd - CR - 5) / (dMax - CR - 8), 0, 1);
     const r = 2.8 + k * 3.2 + rnd() * 1.2;
-    const gap = r + 5.5 + k * 3;
-    let ok = true;
-    for (const z of cru) if (dist(x, y, z.x, z.y) < gap + z.r) { ok = false; break; }
-    if (ok) cru.push({ x, y, r, dT: d });
+    if (bs < r + 4.5) continue;
+    cru.push({ x: bx, y: by, r, dT: bd });
   }
   cru.sort((a, b) => a.dT - b.dT);
   let i = 0;
   for (let t = 0; t < 7; t++) {
     const n = t === 6 ? cru.length - i : Math.max(t < 3 ? 1 : 0, Math.round(cru.length * COTA_TIER[t]));
     for (let k = 0; k < n && i < cru.length; k++, i++) {
-      const cz = cru[i], mod = modeloDaZona(t + 1);
+      const cz = cru[i], mod = modeloDaZona(t + 1, W.bioma.length ? biomaEm(cz.x, cz.y) : -1);
       W.zones.push({ x: cz.x, y: cz.y, r: cz.r, tier: mod.tier, name: mod.n, sp: { ...mod.sp } as Record<string, number>,
         farto: 1 + cz.r * .12, pop: 0, alvoPop: 0, grupos: 0, repT: 0, id: W.zones.length });
     }
   }
-  const nErr = clamp(Math.round(W.worldBeastCap * .06), 4, 24);
+  /* errantes: bichos soltos entre os pontos, espalhados pelo mapa todo */
+  const nErr = clamp(Math.round(W.worldBeastCap * .09), 4, N > 150 ? 70 : 24);
   let feitos = 0;
   for (let tent = 0; tent < nErr * 40 && feitos < nErr; tent++) {
     const x = rr(4, N - 4), y = rr(4, N - 4), d = dist(x, y, c.x, c.y);
-    if (d < CID_R + 6) continue;
+    if (d < CR + 6) continue;
     let ok = true;
     for (const z of W.zones) if (dist(x, y, z.x, z.y) < z.r + 4) { ok = false; break; }
     if (!ok) continue;
-    const k = clamp((d - CID_R - 5) / (dMax - CID_R - 8), 0, 1);
-    const mod = modeloDaZona(clamp(1 + Math.floor(k * 5), 1, 5));
+    const k = clamp((d - CR - 5) / (dMax - CR - 8), 0, 1);
+    const mod = modeloDaZona(clamp(1 + Math.floor(k * 5), 1, 5), W.bioma.length ? biomaEm(x, y) : -1);
     let esp = ""; for (const s in mod.sp) { esp = s; break; }
     const sp: Record<string, number> = {}; sp[esp] = 1;
     W.zones.push({ x, y, r: 1.5, tier: mod.tier, name: mod.n, sp, farto: 1, pop: 0, alvoPop: 0, grupos: 0, repT: 0, id: W.zones.length, errante: 1 });
@@ -103,7 +157,7 @@ export function criarZonas() {
   }
   garantirEspecies();
 }
-/* todo mundo tem as 20 criaturas, mesmo com "Poucos": a espécie que o
+/* todo mundo tem as 25 criaturas, mesmo com "Poucos": a espécie que o
    sorteio deixou de fora entra no ponto de caça da faixa mais próxima */
 function faixaDaEspecie(k: string) { let t = 7; for (const z of ZONAS) if (z.sp[k as KindKey] && z.tier < t) t = z.tier; return t; }
 function garantirEspecies() {
@@ -122,19 +176,20 @@ function garantirEspecies() {
 }
 
 /* ---------- [SYSTEM: WORLD_SPAWN] bandos de até 3 ---------- */
-const BANDO: Partial<Record<KindKey, number>> = { bear: 2, lion: 2, troll: 2, scorpion: 2, minotaur: 2, vampire: 2, cyclops: 1, dragon: 1, hydra: 1, demon: 1, behemoth: 1 };
+const BANDO: Partial<Record<KindKey, number>> = { bear: 2, lion: 2, troll: 2, scorpion: 2, minotaur: 2, vampire: 2, cyclops: 1, dragon: 1, hydra: 1, demon: 1, behemoth: 1,
+  crocodile: 2, golem: 2, yeti: 2, lich: 1 };
 const BANDO_GAP = 4.2, BANDO_ROAM = 1.8, BANDO_COLEIRA = 7;
 const REPOP_CD = 2.2;
 function bandoMax(kind: KindKey) { return BANDO[kind] || 3; }
 function pontoDeBando(z: Zona) {
-  const R = z.r + 1.5;
+  const R = z.r + 2.5;
   for (let tent = 0; tent < 60; tent++) {
     const gap = tent < 30 ? BANDO_GAP : BANDO_GAP * .75, g2 = gap * gap;
     const a = rnd() * 6.283, d = Math.sqrt(rnd()) * R;
     const x = z.x + Math.cos(a) * d, y = z.y + Math.sin(a) * d;
     const tx = x | 0, ty = y | 0;
     if (tx < 0 || ty < 0 || tx >= W.N || ty >= W.N || W.solid[ty * W.N + tx]) continue;
-    if (dist(x, y, W.cidade.x, W.cidade.y) < CID_R + 5) continue;
+    if (dist(x, y, W.cidade.x, W.cidade.y) < W.cidade.r + 5) continue;
     let ok = true;
     for (const b of W.bandos) if (dist2(x, y, b.x, b.y) < g2) { ok = false; break; }
     if (ok) return { x: tx + .5, y: ty + .5 };
@@ -307,12 +362,12 @@ export function podeConvidar(a: Unit | null, b: Unit | null) {
   return !!(W.worldLivre && a && b && a !== b && !a.beast && !b.beast && !b.dead &&
     b.party !== a.party && (a.party ? a.party.membros.length : 1) < EQUIPE_MAX);
 }
-export function convidar(a: Unit, b: Unit) {
+export function convidar(a: Unit, b: Unit, auto = false) {
   if (!podeConvidar(a, b)) return false;
   if (b.convite && b.convite.t > W.simTime) return false;
-  b.convite = { de: a, t: W.simTime + CONVITE_ESPERA };
+  b.convite = { de: a, t: W.simTime + CONVITE_ESPERA, auto };
   W.convitesPend.push(b);
-  avisoDe(a, "Convite enviado a " + b.name, "#7fd6a0");
+  if (!auto) avisoDe(a, "Convite enviado a " + b.name, "#7fd6a0");
   fx({ t: "invite", u: b, ok: null });
   return true;
 }
@@ -357,7 +412,7 @@ function resolverConvites() {
         fx({ t: "invite", u: b, ok: true });
       }
     } else {
-      avisoDe(a, b.name + " recusou o convite", "#c96a5a");
+      if (!c.auto) avisoDe(a, b.name + " recusou o convite", "#c96a5a");
       fx({ t: "invite", u: b, ok: false });
     }
   }
@@ -378,7 +433,7 @@ function agruparJogador() {
     const sc = -Math.abs(o.lvl - c.lvl) * 1.5 - dist(c.x, c.y, o.x, o.y) * .2 + (o.kind !== c.kind ? 2 : 0) + o.w.social * 3;
     if (sc > bs) { bs = sc; melhor = o; }
   }
-  if (melhor) convidar(c, melhor);
+  if (melhor) convidar(c, melhor, true);
 }
 function conviteAutomatico() {
   if (!W.worldLivre || W.simTime < W.conviteIA) return;
@@ -395,7 +450,7 @@ function conviteAutomatico() {
       if (o.party === u.party || o.convite) continue;
       if (o.party && o.party.membros.length > 1) continue;
       if (rancor(u, o) > 0 || rancor(o, u) > 0) continue;
-      convidar(u, o); break;
+      convidar(u, o, true); break;
     }
   }
 }
@@ -437,7 +492,7 @@ function reagirKs(p: Party) {
   if (vant > 1.1 && bravo > 1.05 && L.w.perfil !== "criaturas" || (vant > 1.4 && r >= 3 && bravo > .9)) {
     p.modo = "pk"; p.alvo = ladrao; p.pkAte = W.simTime + PK_DUR;
     for (const m of p.membros) { if (m.dead || m === G.ctrl || !m.w) continue; m.w.pkT = W.simTime + PK_DUR; m.w.alvoPk = ladrao; m.think = .05; }
-    if (ladrao === G.ctrl || (G.ctrl && ladrao.party && ladrao.party === G.ctrl.party)) ui.banner("Briga pelo ponto", L.name + " cansou do KS", "alerta");
+    if (ladrao === G.ctrl) ui.banner("Briga pelo ponto", L.name + " vem tirar satisfação", "alerta");
   } else if (vant < .8 || r >= 4) trocarZona(p, "o ponto está disputado");
 }
 export function poderParty(p: Party) { let s = 0; for (const m of p.membros) if (!m.dead) s += poder(m); return s; }
@@ -480,7 +535,11 @@ function trocarZona(p: Party, motivo: string) {
   escolheZona(p, velha);
   p.largou = velha;
   const nova = p.zona as Zona | null;
-  if (G.ctrl && G.ctrl.party === p && p.lider && p.lider !== G.ctrl && nova) avisoDe(G.ctrl, p.lider.name + ": " + motivo + ", vamos para " + nova.name, "#9fd0ff");
+  /* o grupo do jogador fica sabendo da mudança, sem repetir a cada volta */
+  if (G.ctrl && G.ctrl.party === p && p.lider && p.lider !== G.ctrl && nova && W.simTime > (p.avisoT || 0)) {
+    p.avisoT = W.simTime + 90;
+    avisoDe(G.ctrl, p.lider.name + ": vamos para " + nova.name, "#9fd0ff");
+  }
 }
 function postoDe(p: Party, z: Zona) {
   const dx = p.sq.cx - z.x, dy = p.sq.cy - z.y, l = Math.hypot(dx, dy) || 1;
@@ -827,11 +886,15 @@ export function faixaNivelZona(z: Zona) {
   for (const k in z.sp) { const nv = KINDS[k as KindKey].nv; if (!nv) continue; lo = Math.min(lo, nv[0]); hi = Math.max(hi, nv[1]); }
   return z._nv = hi ? "Lv " + lo + " a " + hi : "";
 }
+/* a faixa do ponto de caça sai ao entrar, mas não a cada passo na borda */
+const zonaDita = new Map<number, number>();
 function anunciarZona(u: Unit) {
   const z = u.pz ? null : zonaEm(u.x, u.y);
   if (z === u.zonaAtual) return;
   u.zonaAtual = z;
-  if (z) ui.banner(z.name, "faixa " + z.tier + " de 7 · " + faixaNivelZona(z), "zona");
+  if (!z || W.simTime - (zonaDita.get(z.id) ?? -1e9) < 120) return;
+  zonaDita.set(z.id, W.simTime);
+  ui.banner(z.name, "faixa " + z.tier + " de 7 · " + faixaNivelZona(z), "zona");
 }
 
 /* ============================================================

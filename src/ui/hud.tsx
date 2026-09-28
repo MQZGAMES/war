@@ -16,6 +16,7 @@ import { xpNeed } from "../sim/combat";
 import { avisoDe } from "../sim/fx";
 import { assumir } from "../sim/session";
 import { temaDaZona } from "../render/terrain";
+import { BIO_COR } from "../sim/biomas";
 import { engine } from "../render/engine";
 import { tick, painel, avisos, faixa, popXp, popOuro, retrato, abrirDeck, fecharDeck, atacar, usarSlot, beber, atualizar, irPara } from "./store";
 import { Ico } from "./icons";
@@ -190,11 +191,15 @@ function construirBase() {
   const N = W.N;
   base = document.createElement("canvas"); base.width = base.height = N;
   const g = base.getContext("2d")!, img = g.createImageData(N, N), d = img.data;
-  const CH = [[64, 110, 52], [72, 122, 58], [82, 132, 64], [92, 142, 70], [150, 140, 120], [132, 123, 106]];
+  const CH = [[64, 110, 52], [72, 122, 58], [82, 132, 64], [92, 142, 70], [150, 140, 120], [132, 123, 106], [150, 78, 60], [104, 98, 88]];
+  /* no Ultimate o chão tem a cor do bioma (o tom varia um pouco pelo ruído) */
+  const bio = W.bioma.length ? W.bioma : null;
+  const BC = BIO_COR.map((h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     const i = y * N + x, c = W.tileCol[i];
     let r: number, gg: number, b: number;
     if (c === 200) { r = 52; gg = 120; b = 140; }
+    else if (bio && c < 4) { const t = BC[bio[i]], k = .9 + c * .05; r = t[0] * k; gg = t[1] * k; b = t[2] * k; }
     else { const t = CH[c] || CH[0]; r = t[0]; gg = t[1]; b = t[2]; }
     if (W.solid[i] && c !== 200 && !W.pzMask[i]) { r = (r * .55) | 0; gg = (gg * .55) | 0; b = (b * .55) | 0; }
     d[i * 4] = r; d[i * 4 + 1] = gg; d[i * 4 + 2] = b; d[i * 4 + 3] = 255;

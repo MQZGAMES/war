@@ -119,6 +119,9 @@ export function somaRancor(a: Unit, b: Unit, v: number) {
    irrita o dono: vira rancor, e rancor pode virar briga pelo ponto */
 export const KS_JANELA = 12;
 const ksAviso = new Map<string, number>();
+/* o jogador só fica sabendo quando o KS vira hábito, e no máximo a
+   cada 2 min por pessoa: o rancor continua valendo em silêncio */
+const ksAvisado = new Map<number, number>();
 export function registrarKs(dono: Unit, ladrao: Unit) {
   if (dono === ladrao || dono.dead || ladrao.dead || aliado(dono, ladrao)) return;
   const k = dono.id + ":" + ladrao.id, ult = ksAviso.get(k) || -1e9;
@@ -127,8 +130,11 @@ export function registrarKs(dono: Unit, ladrao: Unit) {
   if (ksAviso.size > 400) ksAviso.clear();
   somaRancor(dono, ladrao, 1);
   if (dono.party) for (const m of dono.party.membros) if (m !== dono && !m.beast) somaRancor(m, ladrao, .5);
-  if (dono === G.ctrl) avisoDe(dono, ladrao.name + " está roubando seus monstros (KS)", "#e0b93a");
-  else if (ladrao === G.ctrl) avisoDe(ladrao, dono.name + " se irritou: o monstro era dele (KS)", "#e0b93a");
+  if (dono === G.ctrl && rancor(dono, ladrao) >= 3 && W.simTime - (ksAvisado.get(ladrao.id) ?? -1e9) > 120) {
+    ksAvisado.set(ladrao.id, W.simTime);
+    if (ksAvisado.size > 60) ksAvisado.clear();
+    avisoDe(dono, "KS: " + ladrao.name + " vive pegando seus monstros", "#e0b93a");
+  }
 }
 export function anotarRancor(vitima: Unit, algoz: Unit) {
   const antes = rancor(vitima, algoz);

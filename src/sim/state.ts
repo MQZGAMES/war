@@ -5,7 +5,7 @@ export interface Prop { t: "tree" | "rock" | "water" | "obelisco" | "lampiao" | 
 
 export interface Projetil {
   x: number; y: number; tx: number; ty: number; d0: number; sp: number; dirx: number; diry: number;
-  kind: "arrow" | "fire" | "ice" | "dark" | "bola" | "lamina" | "veneno" | "bolaFogo" | "raio"; dmg: number; team: number; src: Unit | null; tgt: Unit | null;
+  kind: "arrow" | "fire" | "ice" | "dark" | "bola" | "lamina" | "veneno" | "bolaFogo" | "raio" | "bolaGelo" | "bolaTrevas"; dmg: number; team: number; src: Unit | null; tgt: Unit | null;
   z: number; raio: number; certo: number; h0: number; h1: number; id: number;
   /* lâmina bumerangue: 1 depois de acertar, voltando para quem lançou */
   volta: number; giro: number; ja: number[];
@@ -28,6 +28,10 @@ export const W = {
   blockLOS: new Uint8Array(0),
   tileCol: new Uint8Array(0),
   pzMask: new Uint8Array(0),
+  /* bioma por ladrilho (só no Ultimate; vazio nos mapas menores) */
+  bioma: new Uint8Array(0),
+  /* centro escolhido para a cidade antes de ela ser erguida (Ultimate) */
+  centro: null as Pt | null,
   props: [] as Prop[],
   units: [] as Unit[],
   projs: [] as Projetil[],

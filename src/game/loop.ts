@@ -4,7 +4,7 @@
    desempenho, música que acompanha o combate e salvamento automático.
    ================================================================ */
 import { G, W, hooks } from "../sim/state";
-import { DT, novoQuadro, step } from "../sim/step";
+import { DT, OLHO, novoQuadro, step } from "../sim/step";
 import { engine, redimensionar, aoRedimensionar, type Qualidade } from "../render/engine";
 import { desenharQuadro, mudarQualidade, ceu } from "../render/scene";
 import { redimensionarOverlay } from "../render/overlay";
@@ -31,6 +31,8 @@ function quadro(now: number) {
   const dt = Math.min(.05, bruto / 1000);
   const simula = G.running && !G.paused;
   if (simula) {
+    /* a simulação sabe onde a câmera olha (para poupar só o que ninguém vê) */
+    OLHO.x = engine.cam.x; OLHO.y = engine.cam.y; OLHO.r = 16 * engine.cam.zoom + 14;
     novoQuadro();
     acc += dt;
     let n = 0;

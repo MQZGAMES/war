@@ -8,14 +8,16 @@ export type VocKey = "knight" | "archer" | "mage" | "druid";
 export type BeastKey =
   | "hen" | "rat" | "cow" | "wolf" | "boar" | "spider" | "bear" | "orc"
   | "lion" | "troll" | "minotaur" | "cyclops" | "dragon" | "demon"
-  | "snake" | "skeleton" | "scorpion" | "vampire" | "hydra" | "behemoth";
+  | "snake" | "skeleton" | "scorpion" | "vampire" | "hydra" | "behemoth"
+  | "crocodile" | "mummy" | "golem" | "yeti" | "lich";
 export type KindKey = VocKey | BeastKey;
 
 export interface BeastAtk {
   investida?: { cd: number; min: number; max: number; dur: number };
   veneno?: { lento: number };
   baque?: { raio: number; frac: number };
-  bola?: { dmg: number; cd: number; rng: number; raio: number };
+  /* bola: de fogo (dragão, demônio), de neve (yeti) ou de trevas (lich) */
+  bola?: { dmg: number; cd: number; rng: number; raio: number; tipo?: "gelo" | "trevas" };
   onda?: { dmg: number; cd: number; rng: number; larg: number; vel: number };
   /* peçonha: a mordida envenena (dano por segundo, duração) */
   peconha?: { dps: number; dur: number };
@@ -34,6 +36,9 @@ export interface KindDef {
   beast?: boolean;
   lvlM?: number; nv?: [number, number]; matilha?: number;
   aggro?: number; roam?: number; xpVal?: number;
+  /* moedas e chance de item em relação ao normal (bicho do mato carrega
+     pouco; múmia e lich guardam tesouro) */
+  ouro?: number; loot?: number;
   atk?: BeastAtk;
   /* porte visual (altura aproximada em unidades de mundo), usado pelo
      rótulo, pelo projétil e pela sombra */
@@ -104,13 +109,29 @@ export const KINDS: Record<KindKey, KindDef> = {
   hydra: { key: "hydra", pt: "Hidra", beast: true, lvlM: 29, nv: [26, 32], hp: 1100, spd: 1.5, range: 1.9, dmg: 55, cd: 1.3, armor: .34,
     threat: 2.0, flee: 0, sight: 14, r: .72, mp: 0, rHp: 6, rMp: 0, aggro: 12, roam: 8, xpVal: 1450, alt: 2.0,
     atk: { onda: { dmg: 40, cd: 6, rng: 7, larg: 1.8, vel: 8 }, peconha: { dps: 8, dur: 6 } } },
+  /* as cinco dos biomas: mangue, deserto, pedreira, gelo e necrópole */
+  crocodile: { key: "crocodile", pt: "Crocodilo", beast: true, lvlM: 11, nv: [9, 12], hp: 175, spd: 1.6, range: 1.15, dmg: 19, cd: 1.3, armor: .28,
+    threat: .8, flee: .08, sight: 9, r: .4, mp: 0, rHp: 1.6, rMp: 0, aggro: 7, roam: 4, xpVal: 185, alt: .45, ouro: .7,
+    atk: { investida: { cd: 7, min: 1.8, max: 4.5, dur: .6 } } },
+  mummy: { key: "mummy", pt: "Múmia", beast: true, lvlM: 15, nv: [14, 17], hp: 265, spd: 1.45, matilha: 1, range: 1.2, dmg: 24, cd: 1.35, armor: .2,
+    threat: .95, flee: 0, sight: 10, r: .34, mp: 0, rHp: .8, rMp: 0, aggro: 9, roam: 5, xpVal: 275, alt: 1.25, ouro: 1.4, loot: 1.3,
+    atk: { veneno: { lento: 2.5 }, peconha: { dps: 4, dur: 6 } } },
+  golem: { key: "golem", pt: "Golem de pedra", beast: true, lvlM: 19, nv: [17, 21], hp: 520, spd: 1.3, range: 1.45, dmg: 38, cd: 1.6, armor: .45,
+    threat: 1.2, flee: 0, sight: 10, r: .5, mp: 0, rHp: 3, rMp: 0, aggro: 9, roam: 6, xpVal: 470, alt: 1.75, ouro: .8,
+    atk: { baque: { raio: 1.8, frac: .5 } } },
+  yeti: { key: "yeti", pt: "Yeti", beast: true, lvlM: 22, nv: [20, 24], hp: 560, spd: 2.1, range: 1.4, dmg: 44, cd: 1.3, armor: .3,
+    threat: 1.35, flee: .05, sight: 13, r: .5, mp: 0, rHp: 4, rMp: 0, aggro: 11, roam: 8, xpVal: 610, alt: 1.8,
+    atk: { bola: { dmg: 34, cd: 5, rng: 8, raio: 1.4, tipo: "gelo" }, investida: { cd: 8, min: 3, max: 7, dur: .7 } } },
+  lich: { key: "lich", pt: "Lich", beast: true, lvlM: 34, nv: [31, 37], hp: 1250, spd: 1.7, range: 1.5, dmg: 58, cd: 1.4, armor: .32,
+    threat: 2.3, flee: 0, sight: 15, r: .4, mp: 0, rHp: 5, rMp: 0, aggro: 13, roam: 7, xpVal: 2150, alt: 1.6, ouro: 1.5, loot: 1.4,
+    atk: { bola: { dmg: 64, cd: 3.2, rng: 10.5, raio: 1.9, tipo: "trevas" }, drena: .45 } },
   behemoth: { key: "behemoth", pt: "Beemote", beast: true, lvlM: 36, nv: [33, 40], hp: 1850, spd: 1.8, range: 2.3, dmg: 86, cd: 1.5, armor: .46,
     threat: 2.6, flee: 0, sight: 14, r: .8, mp: 0, rHp: 8, rMp: 0, aggro: 13, roam: 8, xpVal: 2700, alt: 3.0,
     atk: { baque: { raio: 2.4, frac: .55 }, investida: { cd: 8, min: 3, max: 8, dur: .8 } } },
 };
 
 export const VOCS: VocKey[] = ["knight", "archer", "mage", "druid"];
-export const BEASTS: BeastKey[] = ["hen", "rat", "cow", "wolf", "snake", "boar", "spider", "skeleton", "bear", "orc", "scorpion", "lion", "troll", "minotaur", "vampire", "cyclops", "dragon", "hydra", "demon", "behemoth"];
+export const BEASTS: BeastKey[] = ["hen", "rat", "cow", "wolf", "snake", "boar", "spider", "skeleton", "crocodile", "bear", "orc", "scorpion", "mummy", "lion", "troll", "golem", "minotaur", "vampire", "yeti", "cyclops", "dragon", "hydra", "demon", "lich", "behemoth"];
 
 /* ---------- magia ---------- */
 export type SpellKey = "cura" | "investida" | "meteoro" | "triplo" | "chuva" | "certeiro" | "terremoto" | "trevas" | "nevasca"
@@ -315,11 +336,22 @@ export const TEAMS: (Paleta & { name: string })[] = [
 export const FAUNA = 4;
 export const GUILDA_H = [352, 214, 38, 162];
 
-export const FIRST_NAMES = ["Afonso", "Aldo", "Bento", "Brandão", "Corvo", "Duarte", "Egas", "Fernão", "Garcia", "Gil",
+export type Sexo = "m" | "f";
+export const NOMES_M = ["Afonso", "Aldo", "Bento", "Brandão", "Corvo", "Duarte", "Egas", "Fernão", "Garcia", "Gil",
   "Hugo", "Ivo", "Jorge", "Lopo", "Martim", "Nuno", "Osório", "Paio", "Ramiro", "Rui", "Sancho", "Tristão",
   "Vasco", "Álvaro", "Bermudo", "Diogo", "Estêvão", "Godinho", "Henrique", "Leonel", "Mendo", "Ordonho",
-  "Rodrigo", "Simão", "Teobaldo", "Urbano", "Vimara", "Zarco", "Inês", "Joana", "Urraca", "Elvira", "Sancha",
-  "Mor", "Teresa", "Aldonça", "Beatriz", "Constança", "Leonor", "Mafalda"];
+  "Rodrigo", "Simão", "Teobaldo", "Urbano", "Vimara", "Zarco"];
+export const NOMES_F = ["Inês", "Joana", "Urraca", "Elvira", "Sancha", "Mor", "Teresa", "Aldonça", "Beatriz", "Constança",
+  "Leonor", "Mafalda", "Brites", "Catarina", "Dulce", "Guiomar", "Isabel", "Violante", "Filipa", "Branca",
+  "Genebra", "Lourença", "Marinha", "Oroana", "Sibila", "Estefânia", "Berengária", "Iria", "Toda", "Aldara",
+  "Mécia", "Châmoa", "Ximena", "Elvira", "Gontinha"].filter((n, i, l) => l.indexOf(n) === i);
+export const FIRST_NAMES = [...NOMES_M, ...NOMES_F];
+/* o sexo sai do nome (sem o número de repetição): "Isabel 2" é mulher */
+export function sexoDoNome(nome: string): Sexo {
+  const base = nome.replace(/\s+\d+$/, "").trim();
+  return NOMES_F.indexOf(base) >= 0 ? "f" : "m";
+}
+export function nomeAoAcaso(s: Sexo) { const L = s === "f" ? NOMES_F : NOMES_M; return L[Math.floor(Math.random() * L.length)]; }
 
 export const VOC_DESC: Record<VocKey, string> = {
   knight: "Linha de frente: espada, escudo e muita vida. Investida, Terremoto, que puxa as feras, e Lâmina bumerangue à distância.",
