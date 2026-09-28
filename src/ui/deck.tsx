@@ -6,14 +6,15 @@
    ================================================================ */
 import { useRef, useState } from "preact/hooks";
 import { G, W } from "../sim/state";
-import { ATQ_DICA, ATQ_MODOS, ATRIB, CUSTO, PONTO, SPELLS, TEAMS, magiasDe, type AttrKey, type SpellKey, type VocKey } from "../sim/data";
+import { ATQ_DICA, ATQ_MODOS, ATRIB, CUSTO, MODO_PVP, PERFIL_NOME, PONTO, SPELLS, TEAMS, magiasDe, type AttrKey, type SpellKey, type VocKey } from "../sim/data";
 import { RARO_COR, RARO_NOME, BASES, BASES_LOJA, COFRE_N, LOJA_MAX_K, MOCHILA_N, precoPocao, SLOT_NOME, STAT_LONGO, type StatKey } from "../sim/itemsData";
 import { recontar, comprarItem, comprarPocoes, corItem, depositarItem, depositarOuro, desequipar, descreveStats, ehPocao, equipar, equiparSeQuiser, espacoEm, espacoPocao, itemStat, livres, nomeItem, precoItem, precoVenda, sacarItem, sacarOuro, saldo, servePara, venderItem, vocNome, ITEM_TMP } from "../sim/items";
 import { beberPocao } from "../sim/spells";
-import { dmgFis, dmgMag, recalcular, somaGear, zerarBuild } from "../sim/stats";
-import { janelaNivel } from "../sim/player";
-import { deixarEquipe, EQUIPE_MAX, expulsar, TATICAS } from "../sim/world";
-import { chanceForja, custoForja, forjar, riscoForja } from "../sim/items";
+import { ATTR_ZERO, dmgFis, dmgMag, proporcaoTexto, recalcular, somaGear, temProporcao, zerarBuild } from "../sim/stats";
+const NOME_ATTR = Object.fromEntries(ATRIB.map(([k, r]) => [k, r])) as Record<AttrKey, string>;
+import { cacaAtual, desligarPvp, janelaNivel, ligarPvp, mudarModoAtaque } from "../sim/player";
+import { deixarEquipe, EQUIPE_MAX, expulsar, faixaNivelZona, TATICAS } from "../sim/world";
+import { chanceForja, custoForja, forjar, lojaEsgotada, riscoForja } from "../sim/items";
 import { anunciar, cancelar, comprarOferta, MERCADO, minhasOfertas, OFERTAS_POR_VENDEDOR, precoSugerido, TAXA_MERCADO } from "../sim/mercado";
 import { SLOTS as SLOTS_EQ, NIVEL_MAX as NIVEL_MAX_F } from "../sim/itemsData";
 import { teamAlive } from "../sim/map";
@@ -27,7 +28,7 @@ import type { Coisa, Item, Pocao, SlotKey, Unit } from "../sim/types";
 import { tick, painel, painelUlt, npcAberto, cheio, abrirDeck, fecharDeck, atualizar, retrato, irPara, type Painel } from "./store";
 import { retratoDe } from "../render/portrait";
 import { Ico, IcoItem } from "./icons";
-import { Casas, Grade, type Sel } from "./itens";
+import { Casas, Grade, ItemEm, clsItem, type Sel } from "./itens";
 import { DoisToques, Lin, Passo, Seg, SimNao, clique, fmt, recusa } from "./comp";
 
 const ABAS: [Painel, string, string, string][] = [
@@ -187,8 +188,13 @@ function Detalhe({ u, modo }: { u: Unit; modo: "equip" | "comerciante" | "banque
   }
   return (
     <div class="idet">
-      <div class="inm" style={{ color: B.raro ? RARO_COR[B.raro] : corItem(it) }}>{nomeItem(it)}{B.raro ? <small style={{ marginLeft: "6px", fontWeight: 700 }}>{RARO_NOME[B.raro]}</small> : null}</div>
-      <div class="ist">{B.pocao ? descreveStats(it) : <>{SLOT_NOME[B.s!]} · {comparaStats(it as Item, at)}</>}</div>
+      <div class="icab">
+        <span class={"sl icard" + clsItem(it)}><ItemEm it={it} /></span>
+        <div>
+          <div class="inm" style={{ color: B.raro ? RARO_COR[B.raro] : corItem(it) }}>{nomeItem(it)}{B.raro ? <small style={{ marginLeft: "6px", fontWeight: 700 }}>{RARO_NOME[B.raro]}</small> : null}</div>
+          <div class="ist">{B.pocao ? descreveStats(it) : <>{SLOT_NOME[B.s!]} · {comparaStats(it as Item, at)}</>}</div>
+        </div>
+      </div>
       {!B.pocao && <div class={"ivoc" + (serve ? "" : " nao")}>{serve ? "Serve para " : "Não serve: só "}{vocNome(it)}</div>}
       {!B.pocao && onde !== "eq" && serve && <div class="ist">No corpo: {at ? <b>{nomeItem(at)}</b> : "nada"}</div>}
       <div class="ist">Vale <b>{fmt(precoItem(it))}</b> · o Comerciante paga <b>{fmt(precoVenda(it))}</b></div>
@@ -226,6 +232,13 @@ function PEquip({ u }: { u: Unit }) {
         <SimNao valor={G.AUTO.equip} aoEscolher={(v) => { G.AUTO.equip = v; if (v) equiparSeQuiser(u); salvarPref(); atualizar(); }} />
       </Lin>
       <Grade u={u} sel={itemSel} aoTocar={(s) => tocarSel("eq", s, !u.eqp[s])} />
+      <div class="eqsum">
+        <span><Ico n={u.kind === "mage" || u.kind === "druid" ? "cajado" : u.isArcher ? "arco" : "espada"} s={14} />{Math.round(u.kind === "mage" || u.kind === "druid" ? dmgMag(u) : dmgFis(u))} dano</span>
+        <span><Ico n="escudoI" s={14} />{Math.round(u.defesa * 100)}% defesa</span>
+        <span><Ico n="coracao" s={14} />{Math.round(u.maxHp)} vida</span>
+        {u.maxMp > 0 && <span><Ico n="gota" s={14} />{Math.round(u.maxMp)} mana</span>}
+        <span><Ico n="alvo" s={14} />{Math.round(u.acerto * 100)}% acerto</span>
+      </div>
       <Detalhe u={u} modo="equip" />
       <div class="mot"><span>Mochila</span><b>{MOCHILA_N - livres(u.mochila)}/{MOCHILA_N}</b></div>
       <Casas arr={u.mochila} onde="mo" sel={itemSel} aoTocar={(i) => tocarSel("mo", i, !u.mochila[i])} />
@@ -248,16 +261,35 @@ function PAtrib({ u }: { u: Unit }) {
   };
   return (
     <>
-      <Lin rot={<>Nível {u.lvl} · {u.manual ? "build manual" : u.plano ? u.plano.n : ""}</>}><b style={{ color: u.pts ? "var(--gold-hi)" : "var(--dim)" }}>{u.pts} livre{u.pts === 1 ? "" : "s"}</b></Lin>
+      <Lin rot={<>Nível {u.lvl} · {temProporcao(u) ? "build própria" : u.plano ? u.plano.n : ""}</>}><b style={{ color: u.pts ? "var(--gold-hi)" : "var(--dim)" }}>{u.pts} livre{u.pts === 1 ? "" : "s"}</b></Lin>
       {ATRIB.map(([k, rot]) => (
         <Lin key={k} rot={rot} sub={desc(k)}>
           <Passo valor={a[k]} podeMenos={a[k] > 0} podeMais={u.pts > 0}
-            menos={() => { if (u.attr[k] > 0) { u.attr[k]--; u.pts++; u.manual = true; recalcular(u); atualizar(); } }}
-            mais={() => { if (u.pts > 0) { u.attr[k]++; u.pts--; u.manual = true; recalcular(u, true); atualizar(); } }} />
+            menos={() => {
+              if (u.attr[k] <= 0) return;
+              u.attr[k]--; u.pts++; u.manual = true;
+              /* tirar à mão também mexe na proporção */
+              const P = u.proporcao, S = u.seguiu;
+              if (P && P[k] > 0) P[k]--; else if (S && S[k] > 0) S[k]--;
+              recalcular(u); atualizar();
+            }}
+            mais={() => {
+              if (u.pts <= 0) return;
+              u.attr[k]++; u.pts--; u.manual = true;
+              (u.proporcao || (u.proporcao = ATTR_ZERO()))[k]++;
+              recalcular(u, true); atualizar();
+            }} />
         </Lin>
       ))}
-      <p class="dica">Com build manual, ao largar o comando o personagem segue distribuindo na mesma proporção.</p>
-      <button class="btn" style={{ width: "100%" }} onClick={() => { clique(); zerarBuild(u); u.manual = true; atualizar(); }}>Zerar e redistribuir</button>
+      <div class="secao">Autobuild</div>
+      <Lin rot="Distribuir os pontos sozinho" sub={G.AUTO.build ? "Cada nível novo já cai no atributo certo." : "Os pontos de cada nível ficam livres para você."}>
+        <SimNao valor={G.AUTO.build} aoEscolher={(v) => { G.AUTO.build = v; salvarPref(); atualizar(); }} />
+      </Lin>
+      <p class="dica">{temProporcao(u)
+        ? <>Segue a sua proporção: <b>{proporcaoTexto(u, NOME_ATTR)}</b>. É a conta do que você pôs à mão: 100% em magia continua tudo em magia; 1 em mana e 1 em magia segue meio a meio.</>
+        : <>Sem nada posto à mão, segue o plano <b>{u.plano ? u.plano.n : "da vocação"}</b>. Ponha pontos à mão e ele passa a seguir a sua proporção.</>}
+        {" "}Ao largar o comando, continua do mesmo jeito.</p>
+      <button class="btn" style={{ width: "100%" }} onClick={() => { clique(); zerarBuild(u); u.manual = true; u.proporcao = ATTR_ZERO(); u.seguiu = ATTR_ZERO(); atualizar(); }}>Zerar e redistribuir</button>
     </>
   );
 }
@@ -309,9 +341,16 @@ function PCura({ u }: { u: Unit }) {
       <Lin rot="Vender loot ao Comerciante"><SimNao valor={R.vender} aoEscolher={(v) => s(() => { R.vender = v; })} /></Lin>
       <Lin rot="Comprar poções no Feiticeiro"><SimNao valor={R.pocoes} aoEscolher={(v) => s(() => { R.pocoes = v; })} /></Lin>
       <Lin rot="Comprar equipamento melhor"><SimNao valor={R.comprar} aoEscolher={(v) => s(() => { R.comprar = v; })} /></Lin>
+      <Lin rot="Melhorar equipamento no Ferreiro" sub={R.forjar ? (lojaEsgotada(u) ? "A loja já não tem nada melhor: a forja entra no refil." : "Entra quando a loja não tiver mais nada melhor.") : "Não forja sozinho."}>
+        <SimNao valor={R.forjar} aoEscolher={(v) => s(() => { R.forjar = v; })} />
+      </Lin>
+      {!!R.forjar && <Lin rot="Forjar até" sub={R.forjaAte > 6 ? "Do +6 em diante a falha pode derrubar um nível." : "Até +6 a falha só gasta o ouro."}>
+        <Passo valor={"+" + R.forjaAte} podeMenos={R.forjaAte > 2} podeMais={R.forjaAte < NIVEL_MAX_F}
+          menos={() => s(() => { R.forjaAte = clamp(R.forjaAte - 1, 2, NIVEL_MAX_F); })} mais={() => s(() => { R.forjaAte = clamp(R.forjaAte + 1, 2, NIVEL_MAX_F); })} />
+      </Lin>}
       <Lin rot="Guardar ouro e itens no banco"><SimNao valor={R.banco} aoEscolher={(v) => s(() => { R.banco = v; })} /></Lin>
       <details class="ajuda"><summary><Ico n="ajuda" s={18} />Como funciona o auto refil</summary>
-        <p>Poção zerada, ou mochila cheia com algo para vender ou guardar, manda o personagem à cidade. Lá ele vende o loot que não vale guardar, compra poções até o mínimo, veste equipamento melhor só com o ouro que sobrar além das poções, e deposita ouro e itens de reserva no banco. Liderando, o grupo vai junto. Com trava de PZ, se afasta da briga e espera a trava acabar. Atacar, andar ou mexer o manche pausa a viagem; ela volta sozinha quando o alvo cair e você parar.</p>
+        <p>Poção zerada, ou mochila cheia com algo para vender ou guardar, manda o personagem à cidade. Lá ele vende o loot que não vale guardar, veste equipamento melhor, forja no Ferreiro (quando a loja já não tem nada melhor), compra poções até o mínimo e deposita ouro e itens de reserva no banco. Compra e forja só usam o ouro que sobra além das poções. Na caça automática, ouro sobrando com algo a comprar ou forjar também chama à cidade. Liderando, o grupo vai junto. Com trava de PZ, se afasta da briga e espera a trava acabar. Atacar, andar ou mexer o manche pausa a viagem; ela volta sozinha quando o alvo cair e você parar.</p>
       </details>
     </>
   );
@@ -321,11 +360,21 @@ function PAtaque({ u }: { u: Unit }) {
   const A = G.AUTO.ataque;
   const s = (f: () => void) => { f(); u.think = 0; salvarPref(); atualizar(); };
   const J = janelaNivel(u);
+  const cz = cacaAtual();
   return (
     <>
-      <Lin col rot="O que atacar sozinho"><Seg cls="sm wrap" itens={ATQ_MODOS} valor={A.modo} aoEscolher={(v) => s(() => { A.modo = v; })} /></Lin>
+      <Lin col rot="O que atacar sozinho"><Seg cls="sm wrap" itens={ATQ_MODOS} valor={A.modo} aoEscolher={(v) => s(() => { mudarModoAtaque(v); })} /></Lin>
       <p class="dica">{ATQ_DICA[A.modo]}</p>
+      <Lin rot="PvP" sub={A.pvp ? "Personagens podem ser feridos: seu alvo, o revide e a magia de área." : "Nenhum personagem é ferido, nem por magia de área. Tocar num personagem liga o PvP."}>
+        <Seg itens={[[0, "Off"], [1, "On"]]} valor={A.pvp} aoEscolher={(v) => s(() => { if (v) ligarPvp(u, "magia de área e revide acertam personagens"); else desligarPvp(u); })} />
+      </Lin>
+      {!!A.pvp && MODO_PVP[A.modo] === 0 && <p class="dica" style={{ marginTop: 0 }}>O modo {PERFIL_NOME[A.modo]} não escolhe personagens sozinho; com o PvP ligado, só quem você tocar, quem te atacar e quem estiver na área da magia.</p>}
       <Lin rot="Revidar quem me atacar" sub="troca o alvo na hora para quem te feriu"><SimNao valor={A.revidar} aoEscolher={(v) => s(() => { A.revidar = v; })} /></Lin>
+      <div class="secao">Caça automática</div>
+      <Lin rot="Ir sozinho para a melhor caça" sub={A.modo === "desligado" ? "Liga junto com o auto ataque." : A.cacar ? (cz ? "Agora: " + cz.name + " · " + faixaNivelZona(cz) : "Escolhendo o ponto…") : "Fica onde você deixar."}>
+        <SimNao valor={A.cacar} aoEscolher={(v) => s(() => { A.cacar = v; })} />
+      </Lin>
+      <p class="dica">Power level: vai para o ponto que dá mais experiência por minuto para a sua força (ou a do grupo que você lidera), sem arriscar demais. Num grupo liderado por outro, segue o líder. Troca quando o ponto esvazia, quando fica 40 s sem luta ou quando você sobe de nível. Na cidade, faz as compras do refil e sai. Andar à mão segura a caça ali por um minuto e meio.</p>
       <div class="secao">Nível das criaturas</div>
       <Lin rot="Escolha da presa"><Seg itens={[[1, "Automático"], [0, "Faixa"]]} valor={A.nivelAuto} aoEscolher={(v) => s(() => { A.nivelAuto = v; })} /></Lin>
       {!A.nivelAuto && <>

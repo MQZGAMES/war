@@ -13,6 +13,7 @@ import { iaAnunciar, iaComprarMercado } from "./mercado";
 import { clamp, rnd } from "./rng";
 import { G } from "./state";
 import { itemStat, recalcular } from "./stats";
+import { estiloDe } from "./estilo";
 import type { Coisa, Item, Pocao, SlotKey, Unit } from "./types";
 
 export { itemStat };
@@ -327,13 +328,44 @@ export function iaCofre(u: Unit) {
   guardarNoCofre(u);
   if (u.ouro > 80) depositarOuro(u, u.ouro - 80);
 }
-/* estoque que a IA quer levar: cresce com o nível, sem passar de 50 */
-export function pocaoAlvo(u: Unit) { return clamp(8 + Math.round(u.lvl * 1.5), 8, 50); }
+/* estoque que a IA quer levar: cresce com o nível, sem passar de 50;
+   o cauteloso leva mais, o acumulador leva menos */
+export function pocaoAlvo(u: Unit) { return clamp(Math.round((8 + u.lvl * 1.5) * (u.w ? estiloDe(u.w).pocao : 1)), 6, 50); }
 export function custoPocoes(u: Unit) {
   const a = pocaoAlvo(u), conj = u.maxMp > 0 && u.kind !== "knight";
   return PRECO_HP * Math.max(0, a - u.potHp) + (conj ? PRECO_MP * Math.max(0, a - u.potMp) : 0);
 }
-export function reservaIA(u: Unit) { return custoPocoes(u) + PRECO_HP * 6; }
+/* o acumulador guarda boa parte do ouro em vez de gastar em equipamento */
+export function reservaIA(u: Unit) {
+  const gasto = u.w ? estiloDe(u.w).gasto : 1;
+  return custoPocoes(u) + PRECO_HP * 6 + (gasto < 1 ? saldo(u) * (1 - gasto) * .8 : 0);
+}
+/* mochila entupida (cofre cheio, tudo "guardável"): vende o que vale
+   menos até abrir espaço, para ninguém ficar preso na cidade */
+export function liberarMochila(u: Unit, alvo = 3) {
+  let n = 0;
+  while (livres(u.mochila) < alvo) {
+    let pi = -1, pv = 1e18;
+    for (let i = 0; i < u.mochila.length; i++) {
+      const it = u.mochila[i];
+      if (!it || ehPocao(it)) continue;
+      const v = precoItem(it);
+      if (v < pv) { pv = v; pi = i; }
+    }
+    if (pi < 0) break;
+    venderItem(u, pi); n++;
+  }
+  return n;
+}
+/* a loja já não tem nada melhor para nenhuma casa, a qualquer preço:
+   daqui em diante o equipamento só sobe na forja */
+export function lojaEsgotada(u: Unit) {
+  for (const s of SLOTS) {
+    if (s === "esc" && u.eqp.arma && BASES[u.eqp.arma.b].duas) continue;
+    if (melhorDaCasa(u, s, 1e12)) return false;
+  }
+  return true;
+}
 export function precisaNpc(u: Unit, id: string) {
   if (id === "feiticeiro") {
     const conj = u.maxMp > 0 && u.kind !== "knight", a = pocaoAlvo(u);
@@ -406,7 +438,7 @@ export function forjar(u: Unit, it: Item): ResultadoForja | null {
 }
 /* A IA forja só quando já não há o que comprar e sobra dinheiro além da
    reserva de poções; o ambicioso arrisca níveis mais altos */
-function alvoForja(u: Unit, teto: number, verba: number) {
+export function alvoForja(u: Unit, teto: number, verba: number) {
   let melhor: Item | null = null, bs = -1e9;
   for (const s of SLOTS) {
     const it = u.eqp[s];
@@ -421,8 +453,9 @@ function alvoForja(u: Unit, teto: number, verba: number) {
 }
 function tetoForja(u: Unit) {
   const w = u.w;
-  const ambicao = w ? w.ganancia : 1;
-  return ambicao > 1.15 ? NIVEL_MAX : ambicao > .85 ? 8 : 6;
+  if (!w) return 6;
+  /* o teto vem da personalidade; a ganância empurra um pouco */
+  return clamp(estiloDe(w).forja + (w.ganancia > 1.3 ? 1 : w.ganancia < .7 ? -1 : 0), 5, NIVEL_MAX);
 }
 export function querForjar(u: Unit) {
   const verba = saldo(u) - reservaIA(u) - 200;

@@ -43,9 +43,10 @@ A pasta `dist/` pode ser publicada em qualquer hospedagem estática (GitHub Page
 O workflow `.github/workflows/deploy.yml` gera o build e publica no GitHub Pages a cada push na `main`.
 O save na nuvem é opcional: sem as variáveis do Supabase o jogo roda só com o save local.
 
-1. **Supabase**: crie um projeto, abra *SQL Editor* e rode `supabase/schema.sql`.
-   O login é por link no e-mail (o modelo padrão do Supabase). Com SMTP próprio dá para incluir `{{ .Token }}` no modelo *Magic Link* e o e-mail passa a trazer também um código.
-   Em *Authentication > URL Configuration* ponha a URL do Pages em *Site URL* e em *Redirect URLs* (e `http://localhost:5173/**` para testar no PC).
+1. **Supabase**: crie um projeto, abra *SQL Editor* e rode `supabase/contas.sql`.
+   A conta é só usuário e senha (sem e-mail): a senha vira hash bcrypt no servidor e o aparelho guarda um token de sessão.
+   As tabelas não têm acesso direto; tudo passa pelas funções `mdg_*`. Não precisa configurar nada em *Authentication*.
+   (`supabase/schema.sql` é o save antigo, com login por e-mail; não é mais usado.)
 2. **GitHub**: crie o repositório e envie esta pasta. Em *Settings > Pages > Source* escolha **GitHub Actions**.
    A URL e a chave publishable do Supabase ficam em `.env.production` (públicas por natureza; o RLS protege os dados).
 3. Para testar a nuvem localmente, copie `.env.production` para `.env.local`.

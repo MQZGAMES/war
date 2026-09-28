@@ -288,6 +288,18 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 5px; border-radius: 5
 .hub { position: absolute; right: calc(var(--sar) + 14px); bottom: calc(var(--sab) + 234px); width: 54px; height: 54px; }
 .atqm { position: absolute; right: calc(var(--sar) + 78px); bottom: calc(var(--sab) + 238px); width: 48px; height: 48px; color: var(--dim); }
 .atqm.ativo { color: var(--gold-hi); border-color: var(--gold-lo); } .atqm.maldoso { color: #ff5a6c; border-color: rgba(226, 57, 79, .55); }
+/* PvP: pílula ao lado do auto ataque; verde e calma desligado, vermelha ligado */
+.pvpb { position: absolute; right: calc(var(--sar) + 134px); bottom: calc(var(--sab) + 244px); height: 38px; min-width: 64px; padding: 0 10px 0 8px; border-radius: 19px;
+  display: flex; align-items: center; gap: 4px; cursor: pointer; pointer-events: auto; color: #9fe0b4; background: var(--pan);
+  border: 1px solid rgba(127, 214, 160, .45); box-shadow: 0 4px 14px rgba(0, 0, 0, .45); transition: transform .07s, background .15s, border-color .15s; }
+.pvpb b { font-size: 12px; font-weight: 900; letter-spacing: .03em; }
+.pvpb small { font-size: 10px; font-weight: 800; text-transform: uppercase; opacity: .85; }
+.pvpb:active { transform: scale(.93); }
+.pvpb.on { color: #ffd0cc; background: linear-gradient(180deg, rgba(150, 34, 40, .92), rgba(84, 16, 22, .94)); border-color: rgba(255, 110, 110, .7);
+  box-shadow: 0 0 0 3px rgba(226, 57, 79, .22), 0 4px 14px rgba(0, 0, 0, .5); }
+/* senha: mostrar/esconder */
+.verSenha { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12.5px; color: var(--dim); cursor: pointer; }
+.verSenha input { width: 18px; height: 18px; accent-color: var(--gold); }
 .hub .pt { position: absolute; top: -3px; right: -3px; min-width: 20px; height: 20px; border-radius: 10px; padding: 0 5px; background: var(--gold); color: var(--ink);
   font-size: 11px; font-weight: 900; line-height: 20px; box-shadow: 0 2px 6px rgba(0, 0, 0, .5); animation: pulsa 1.2s infinite; }
 .mirando { position: absolute; left: 50%; top: calc(var(--sat) + 16%); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 26px;
@@ -318,7 +330,7 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 5px; border-radius: 5
   box-shadow: 0 -16px 44px rgba(0, 0, 0, .6); animation: sobe .2s ease both; }
 .deck.cheio { max-height: 92vh; }
 @keyframes sobe { from { transform: translateY(18px); opacity: 0; } to { transform: none; opacity: 1; } }
-.hud.comDeck .acao, .hud.comDeck .pocoes, .hud.comDeck .hub, .hud.comDeck .atqm { opacity: .15; pointer-events: none; }
+.hud.comDeck .acao, .hud.comDeck .pocoes, .hud.comDeck .hub, .hud.comDeck .atqm, .hud.comDeck .pvpb { opacity: .15; pointer-events: none; }
 .hud.comDeck .acao *, .hud.comDeck .pocoes * { pointer-events: none; }
 .pega { flex: 0 0 auto; height: 22px; position: relative; touch-action: none; cursor: grab; }
 .pega::before { content: ""; position: absolute; left: 50%; top: 8px; width: 46px; height: 5px; margin-left: -23px; border-radius: 3px; background: rgba(255, 255, 255, .28); }
@@ -337,25 +349,52 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 5px; border-radius: 5
   font-size: 10.5px; font-weight: 900; line-height: 17px; font-style: normal; }
 
 /* equipamento no molde do Tibia */
-.eqg { display: grid; grid-template-columns: repeat(3, 58px); gap: 6px; justify-content: center; padding: 9px; width: max-content; margin: 2px auto 0;
-  background: linear-gradient(180deg, #2a2622, #1d1a17); border: 1px solid #4a423a; border-radius: 10px; box-shadow: inset 0 0 0 1px #14110f, 0 6px 14px rgba(0, 0, 0, .4); }
-.sl { width: 58px; height: 58px; padding: 0; position: relative; cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-direction: column;
-  background: linear-gradient(180deg, #1b1917, #131110); border: 1px solid #3a342e; box-shadow: inset 1px 1px 0 #0d0b0a, inset -1px -1px 0 #3e3730; transition: transform .08s; }
+/* [SYSTEM: HUD_EQUIP] casas de pedra escura com a moldura da raridade;
+   item forjado a +6 ganha brilho dourado e a +8, brilho vivo */
+.eqg { display: grid; grid-template-columns: repeat(3, 60px); gap: 7px; justify-content: center; padding: 11px; width: max-content; margin: 4px auto 0; position: relative;
+  background: radial-gradient(120% 90% at 50% 0%, #3a332b 0%, #221e1a 55%, #181512 100%); border: 1px solid #5a4e40; border-radius: 12px;
+  box-shadow: inset 0 0 0 1px #120f0c, inset 0 1px 0 rgba(255, 230, 180, .08), 0 8px 18px rgba(0, 0, 0, .45); }
+.eqg::before { content: ""; position: absolute; inset: 4px; border-radius: 9px; border: 1px solid rgba(217, 180, 92, .14); pointer-events: none; }
+.sl { width: 60px; height: 60px; padding: 0; position: relative; cursor: pointer; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-direction: column;
+  --rc: 90, 80, 68;
+  background: radial-gradient(circle at 50% 42%, rgba(var(--rc), .2), rgba(0, 0, 0, 0) 62%), linear-gradient(180deg, #211e1b, #121010);
+  border: 1px solid rgba(var(--rc), .75); box-shadow: inset 0 2px 5px rgba(0, 0, 0, .7), inset 0 -1px 0 rgba(255, 255, 255, .05); transition: transform .08s, box-shadow .15s; overflow: hidden; }
 .sl:active { transform: scale(.95); }
-.icoItem { width: 70%; height: 70%; display: block; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .6)); }
-.icoItem.vz { opacity: .18; filter: none; }
-.sl.sel { outline: 2px solid var(--gold); outline-offset: -2px; box-shadow: 0 0 14px rgba(217, 180, 92, .45); }
+.sl.r1 { --rc: 127, 214, 143; } .sl.r2 { --rc: 111, 181, 255; } .sl.r3 { --rc: 198, 139, 255; }
+.sl.r1, .sl.r2, .sl.r3 { box-shadow: inset 0 0 12px rgba(var(--rc), .28), inset 0 2px 5px rgba(0, 0, 0, .6); }
+.sl.f6::after, .sl.f8::after { content: ""; position: absolute; inset: 0; border-radius: 7px; pointer-events: none; box-shadow: inset 0 0 0 1px rgba(242, 197, 61, .55), inset 0 0 10px rgba(242, 197, 61, .22); }
+.sl.f8::after { box-shadow: inset 0 0 0 1px rgba(255, 214, 110, .9), inset 0 0 14px rgba(255, 190, 70, .45); animation: forjaBrilho 2.4s ease-in-out infinite; }
+@keyframes forjaBrilho { 50% { box-shadow: inset 0 0 0 1px rgba(255, 230, 150, 1), inset 0 0 18px rgba(255, 200, 90, .6); } }
+.icoItem { width: 74%; height: 74%; display: block; overflow: visible; filter: drop-shadow(0 2px 1.5px rgba(0, 0, 0, .7)); }
+.icoItem.vz { width: 58%; height: 58%; opacity: .16; filter: grayscale(1); margin-top: -8px; }
+.sl .vzn { position: absolute; left: 0; right: 0; bottom: 4px; font-size: 7.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; text-align: center; color: rgba(214, 196, 160, .38); }
+.sl.sel { outline: 2px solid var(--gold); outline-offset: -2px; box-shadow: 0 0 16px rgba(217, 180, 92, .5), inset 0 0 12px rgba(217, 180, 92, .25); }
 .sl.bloq { opacity: .35; }
-.sl .qn { position: absolute; right: 3px; bottom: 2px; font-size: 10.5px; font-weight: 900; color: #fff; text-shadow: 0 1px 2px #000; }
-.sl .lv { position: absolute; right: 3px; top: 1px; font-size: 10px; font-weight: 900; color: #f2d98a; text-shadow: 0 1px 2px #000; }
-.sl .st { position: absolute; left: 1px; right: 1px; bottom: 1px; font-size: 8.5px; font-weight: 800; line-height: 11px; text-align: center; color: #e9e2d0;
-  background: rgba(0, 0, 0, .62); border-radius: 0 0 4px 4px; white-space: nowrap; overflow: hidden; }
-.sl.info { cursor: default; background: #221f1c; }
+.sl .qn { position: absolute; right: 3px; bottom: 2px; font-size: 10.5px; font-weight: 900; color: #fff; text-shadow: 0 1px 2px #000, 0 0 3px #000; }
+.sl .lv { position: absolute; right: 2px; top: 2px; min-width: 18px; padding: 0 3px; height: 13px; border-radius: 7px; font-size: 9.5px; font-weight: 900; line-height: 13px; text-align: center;
+  color: #f7e2a0; background: rgba(12, 9, 6, .78); border: 1px solid rgba(217, 180, 92, .45); }
+.sl.f6 .lv { color: #1a1206; background: linear-gradient(180deg, #f5d77a, #c99a2e); border-color: #f5db8f; }
+.sl.f8 .lv { color: #1a0f04; background: linear-gradient(180deg, #ffe7a0, #f0a83a); border-color: #fff0c0; box-shadow: 0 0 6px rgba(255, 200, 90, .7); }
+.sl .st { position: absolute; left: 1px; right: 1px; bottom: 1px; font-size: 8.5px; font-weight: 800; line-height: 11px; text-align: center; color: #efe6d0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, .35), rgba(0, 0, 0, .78)); border-radius: 0 0 6px 6px; white-space: nowrap; overflow: hidden; }
+.sl.info { cursor: default; background: linear-gradient(180deg, #2a2520, #1c1916); border-color: #4a4036; }
+.sl.info .icoItem { width: 58%; height: 58%; }
 .sl.info small { font-size: 10px; color: #b9b9b9; line-height: 1; }
 .sl.info b { font-size: 13px; color: #e4e4e4; line-height: 1.15; }
+.sl.info .pp { display: flex; align-items: center; gap: 1px; font-size: 11.5px; font-weight: 900; line-height: 1.1; }
+.sl.info .pp .icoItem { width: 17px; height: 17px; }
 .eqg.peq { grid-template-columns: repeat(3, 44px); gap: 4px; padding: 6px; }
 .eqg.peq .sl { width: 44px; height: 44px; }
 .eqg.peq .sl .st { font-size: 7.5px; line-height: 9px; } .eqg.peq .sl .lv { font-size: 9px; }
+/* resumo do que o equipamento dá, logo abaixo da grade */
+.eqsum { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 10px auto 2px; max-width: 360px; }
+.eqsum span { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px 3px 7px; border-radius: 12px; font-size: 11.5px; font-weight: 800; color: var(--text);
+  background: rgba(255, 255, 255, .05); border: 1px solid var(--line2); }
+.eqsum span .ico { color: var(--gold-hi); }
+/* cabeçalho do item escolhido: o item grande na moldura dele */
+.icab { display: flex; align-items: center; gap: 12px; }
+.icab > div { min-width: 0; flex: 1; }
+.sl.icard { flex: 0 0 64px; width: 64px; height: 64px; cursor: default; }
 .mo { display: grid; grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); gap: 5px; margin-top: 10px; }
 .mo .sl { width: auto; height: auto; aspect-ratio: 1; }
 .mot { display: flex; justify-content: space-between; align-items: baseline; margin-top: 14px; font-size: 12px; color: var(--dim); }
@@ -414,15 +453,17 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 5px; border-radius: 5
   .ab.s3 { right: 23px; bottom: 135px; width: 56px; height: 56px; }
   .pocoes { right: calc(var(--sar) + 204px); } .pocoes .ab { width: 50px; height: 50px; }
   .hub { bottom: calc(var(--sab) + 212px); } .atqm { bottom: calc(var(--sab) + 216px); right: calc(var(--sar) + 72px); }
+  .pvpb { bottom: calc(var(--sab) + 221px); right: calc(var(--sar) + 124px); }
   .mini { width: 92px; height: 92px; } .topo { top: calc(var(--sat) + 112px); }
   .voc img, .voc .ph { width: 80px; height: 80px; }
 }
 @media (max-height: 560px) {
   .acao { transform: scale(.88); transform-origin: 100% 100%; }
   .hub { bottom: calc(var(--sab) + 206px); } .atqm { bottom: calc(var(--sab) + 210px); }
+  .pvpb { bottom: calc(var(--sab) + 215px); }
 }
 @media (prefers-reduced-motion: reduce) { * { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
 
 /* raridade: canto colorido no quadro do item */
-.rar { position: absolute; top: 3px; left: 3px; width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 6px currentColor; }
+.rar { position: absolute; top: 4px; left: 4px; width: 7px; height: 7px; border-radius: 1.5px; transform: rotate(45deg); box-shadow: 0 0 6px currentColor, inset 0 0 0 1px rgba(255, 255, 255, .45); }
 .rar.r1 { color: #7fd68f; background: #7fd68f; } .rar.r2 { color: #6fb5ff; background: #6fb5ff; } .rar.r3 { color: #c68bff; background: #c68bff; }

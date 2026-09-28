@@ -85,6 +85,10 @@ export const hooks = {
   onLargar: () => {},
   setCam: (_auto: boolean) => {},
   centrarEm: (_p: Pt) => {},
+  /* o equipamento de quem está no comando mudou fora da interface (forja
+     do auto refil); o PvP mudou sozinho (revide, toque num personagem) */
+  equipMudou: (_u: Unit) => {},
+  pvpMudou: () => {},
 };
 
 export const idx = (x: number, y: number) => y * W.N + x;

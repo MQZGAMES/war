@@ -46,6 +46,12 @@ export interface WorldMind {
   escX?: number; escY?: number;
   /* próxima vez que vale checar compras e forja */
   lojaT?: number;
+  /* personalidade (escondida) e quando ela pode mudar; mortes recentes
+     (somem aos poucos) e as mortes de PK já vistas */
+  estilo?: import("./estilo").Estilo; estiloT?: number; mortes?: number; pkVisto?: number;
+  /* desde quando está na cidade, voltas pelos NPCs e até quando a falta
+     de poção ou a mochila cheia não chamam de volta à cidade */
+  cidadeT?: number; passes?: number; cidadeOk?: number;
 }
 
 export interface Refil { fase: "isolar" | "rota" | "esperar" | "voltar"; i: number; rota: string[]; x: number; y: number; t: number }
@@ -65,8 +71,9 @@ export interface Party {
   tatica: string; eleicaoT: number; posto: Pt; puxador: Unit | null; min: number; paciencia: number;
   /* último instante em que alguém do grupo lutou; ponto abandonado por último */
   lutaT?: number; largou?: Zona | null;
-  /* último aviso de troca de ponto dado ao jogador */
-  avisoT?: number;
+  /* último aviso de troca de ponto dado ao jogador; desde quando o grupo
+     espera na cidade */
+  avisoT?: number; esperaT?: number;
 }
 
 export interface Unit {
@@ -81,7 +88,10 @@ export interface Unit {
   tiros: number; tiroT: number; exAte: Record<string, number>; ordem: Pt | null; encomenda: Encomenda | null; npcAlvo: Npc | null;
   potHp: number; potMp: number; pressa: number; paral: number; alvoManual: Unit | null;
   mp: number; maxMp: number; lvl: number; xp: number; bonus: number; velo: number; regHp: number; regMp: number;
-  attr: Record<AttrKey, number>; pts: number; manual: boolean; proporcao: Record<AttrKey, number> | null; magic: number; defesa: number;
+  attr: Record<AttrKey, number>; pts: number; manual: boolean; magic: number; defesa: number;
+  /* autobuild: pontos postos à mão (a proporção) e os que o personagem
+     já distribuiu seguindo ela */
+  proporcao: Record<AttrKey, number> | null; seguiu: Record<AttrKey, number> | null;
   plano: Plano | null; post: Postura; postT: number; driftX: number; driftY: number; acerto: number;
   beast: boolean; home: Pt | null; roam: number; wander: number; prov: Unit | null; isca: number;
   packTgt: Unit | null; packT: number; strafe: number; strafeT: number; odio: Record<number, Unit> | null; taunt: Unit | null; tauntAte: number;

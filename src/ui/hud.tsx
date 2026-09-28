@@ -8,7 +8,7 @@ import { G, W } from "../sim/state";
 import { EXA, KINDS, PERFIL_NOME, TEAMS, VERMELHA_N, ATQ_ICONE, type SpellKey } from "../sim/data";
 import { pzAtiva, pzMorte, pzRestante, exaustoEm } from "../sim/pk";
 import { magiaDe, slotDe } from "../sim/spells";
-import { REFIL_TXT, avisoPz } from "../sim/player";
+import { REFIL_TXT, avisoPz, cacaAtual, desligarPvp, ligarPvp } from "../sim/player";
 import { portaoPara } from "../sim/map";
 import { inimigo, odeia } from "../sim/relations";
 import { corTier, TATICAS } from "../sim/world";
@@ -71,14 +71,15 @@ function Quadro() {
   const fr = Math.max(0, Math.min(1, u.hp / u.maxHp)), pct = fr * 100;
   if (ghostU !== u.id) { ghostU = u.id; ghost = pct; }
   if (pct >= ghost) ghost = pct; else ghost += (pct - ghost) * .35;
-  const r = u.refil;
+  const r = u.refil, cacaZ = cacaAtual();
   const sub = morto ? "caído · volta em " + Math.max(0, Math.ceil(u.reborn - W.simTime)) + " s"
     : G.mirandoSlot >= 0 ? "toque onde a magia deve cair"
       : G.convidando ? "toque em quem chamar"
         : r ? (r.fase === "isolar" ? "auto refil · esperando a trava (" + Math.ceil(pzRestante(u)) + " s)"
           : r.fase === "rota" ? "auto refil · " + (REFIL_TXT[r.rota[r.i]] || "na cidade")
             : r.fase === "esperar" ? "auto refil · esperando o grupo" : "auto refil · voltando à caça")
-          : u.K.pt + " · " + u.st.t;
+          : cacaZ && !u.target && Math.hypot(u.x - cacaZ.x, u.y - cacaZ.y) > cacaZ.r + 3 ? "indo caçar · " + cacaZ.name
+            : u.K.pt + " · " + u.st.t;
   const p = u.party, n = p ? p.membros.length : 1, seg = Math.ceil(pzRestante(u));
   return (
     <div class="pcard" onClick={() => { clique(); painel.value ? fecharDeck() : abrirDeck("equip"); }}>
@@ -175,6 +176,18 @@ function Acao() {
         style={{ position: "absolute", pointerEvents: "auto" }} aria-label="Auto ataque"
         onClick={() => { clique(); painel.value === "ataque" ? fecharDeck() : abrirDeck("ataque"); }}>
         <Ico n={{ desligado: "proibido", criaturas: "pata", justiceiro: "balanca", maldoso: "caveira", todos: "cruzadas" }[A.modo]} s={20} />
+      </button>
+      {/* [SYSTEM: PVP] liga e desliga o dano em personagens */}
+      <button class={"pvpb" + (A.pvp ? " on" : "")} aria-pressed={!!A.pvp} aria-label={"PvP " + (A.pvp ? "ligado" : "desligado")}
+        onClick={() => {
+          clique();
+          if (A.pvp) {
+            const antes = A.modo;
+            desligarPvp(u);
+            avisoDe(u, "PvP desligado · ninguém é ferido" + (antes !== A.modo ? " · auto ataque em Criaturas" : ""), "#8fe6a8");
+          } else ligarPvp(u, "magia de área e revide acertam personagens");
+        }}>
+        <Ico n={A.pvp ? "cruzadas" : "paz"} s={15} /><b>PvP</b><small>{A.pvp ? "on" : "off"}</small>
       </button>
       <button class="redondo hub" style={{ position: "absolute", pointerEvents: "auto" }} aria-label="Painéis"
         onClick={() => { clique(); painel.value ? fecharDeck() : abrirDeck("equip"); }}>

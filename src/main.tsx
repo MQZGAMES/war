@@ -15,9 +15,7 @@ import { iniciarCena, configurarSombra } from "./render/scene";
 import { iniciarEntrada } from "./game/input";
 import { iniciarLaco, laco } from "./game/loop";
 import { carregarPref, ganchoSave, PREF } from "./sim/save";
-import { conta, enviarMundo, iniciarNuvem } from "./net/nuvem";
-/* guardado antes do Supabase limpar o endereço de volta do login */
-const entrouPor = location.hash;
+import { enviarMundo, iniciarNuvem } from "./net/nuvem";
 import { startWorld, criarHeroi, SETUP } from "./sim/session";
 import { fotoPose } from "./render/portrait";
 import { novoQuadro, PERF, step } from "./sim/step";
@@ -45,8 +43,8 @@ function iniciar() {
   startWorld();
   render(<App />, document.getElementById("ui")!);
   iniciarLaco();
-  ganchoSave.aoSalvar = (m, forcar) => { void enviarMundo(m, forcar); };
-  void iniciarNuvem().then((e) => { if (e) aviso(e, "#e0685a"); else if (conta.value && /access_token/.test(entrouPor)) aviso("Conectado à nuvem: " + conta.value.email, "#8fe6a8"); });
+  ganchoSave.aoSalvar = (m, modo) => { void enviarMundo(m, modo); };
+  void iniciarNuvem().then((e) => { if (e) aviso(e, "#e0685a"); });
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__mesa = { engine, G, W, criarHeroi, irPara, laco, tick, abrirNpc, PREF, step, SETUP, startWorld, fotoPose, novoQuadro, PERF, MERCADO };
   const boot = document.getElementById("boot");
   if (boot) { boot.classList.add("fora"); setTimeout(() => boot.remove(), 700); }

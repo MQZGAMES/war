@@ -306,21 +306,32 @@ export const ATQ_ICONE: Record<AtqModo, string> = { desligado: "⊘", criaturas:
 
 export interface AutoCfg {
   cura: { ligado: number; pct: number; pctMana: number; aliados: number; pctAliado: number };
-  ataque: { modo: AtqModo; revidar: number; nivelAuto: number; nivelMin: number; nivelMax: number };
-  refil: { ligado: number; hp: number; mp: number; vender: number; pocoes: number; comprar: number; banco: number };
+  /* pvp: 1 deixa ferir personagens (alvo, revide e magia de área);
+     cacar: com auto ataque, vai sozinho para a caça que mais rende */
+  ataque: { modo: AtqModo; revidar: number; nivelAuto: number; nivelMin: number; nivelMax: number; pvp: number; cacar: number };
+  /* forjar: sobe o equipamento no Ferreiro quando a loja já não tem
+     nada melhor; forjaAte: até que nível (do +6 em diante a falha
+     pode derrubar um nível) */
+  refil: { ligado: number; hp: number; mp: number; vender: number; pocoes: number; comprar: number; banco: number; forjar: number; forjaAte: number };
   equip: number;
   lider: number;
   /* sempre tentar ter a equipe completa com quem está livre */
   agrupar: number;
+  /* distribuir sozinho o ponto de cada nível (na proporção do que você
+     escolheu à mão, ou pelo plano da vocação) */
+  build: number;
 }
+/* modos que ferem personagens pedem o PvP ligado */
+export const MODO_PVP: Record<AtqModo, number> = { desligado: 0, criaturas: 0, justiceiro: 1, maldoso: 1, todos: 1 };
 export function autoPadrao(): AutoCfg {
   return {
     cura: { ligado: 0, pct: .5, pctMana: .5, aliados: 1, pctAliado: .6 },
-    ataque: { modo: "criaturas", revidar: 1, nivelAuto: 1, nivelMin: 1, nivelMax: 8 },
-    refil: { ligado: 1, hp: 50, mp: 50, vender: 1, pocoes: 1, comprar: 1, banco: 1 },
+    ataque: { modo: "criaturas", revidar: 1, nivelAuto: 1, nivelMin: 1, nivelMax: 8, pvp: 0, cacar: 1 },
+    refil: { ligado: 1, hp: 50, mp: 50, vender: 1, pocoes: 1, comprar: 1, banco: 1, forjar: 1, forjaAte: 6 },
     equip: 1,
     lider: 0,
     agrupar: 0,
+    build: 1,
   };
 }
 

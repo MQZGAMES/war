@@ -42,6 +42,9 @@ export function querAtacar(u: Unit, e: Unit, m: AtqModo) {
 }
 export function inimigo(a: Unit, b: Unit): boolean {
   if (a === b || a.pz || b.pz) return false;
+  /* [SYSTEM: PVP] PvP desligado: quem está no comando não fere
+     personagem nenhum (nem com magia de área) */
+  if (a === G.ctrl && !b.beast && !G.AUTO.ataque.pvp) return false;
   if (a.beast) return !b.beast;
   if (b.beast) {
     if (a === G.ctrl) return true;

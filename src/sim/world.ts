@@ -7,7 +7,9 @@
    ================================================================ */
 import { BEASTS, FAUNA, KINDS, ST, TEAMS, VERMELHA_N, type AtqModo, type KindKey } from "./data";
 import { avisoDe, fx, ui } from "./fx";
-import { darItem, negociar, novoItem, pocaoItem, precisaNpc, querForjar, reservaIA, saldo, livres, temMelhoria, PRECO_HP } from "./items";
+import { darItem, liberarMochila, negociar, novoItem, pocaoItem, precisaNpc, querForjar, reservaIA, saldo, livres, temMelhoria, PRECO_HP } from "./items";
+import { estiloDe, estiloInicial, reavaliarEstilo } from "./estilo";
+import { forcaDe, notaZona } from "./caca";
 import { KIT, BASES, COFRE_N, MOCHILA_N } from "./itemsData";
 import { CID_R, emPZ, nearestFree, npcDe, NPC_ALCANCE, portaoPara, QBUF, queryRadius } from "./map";
 import { pzAtiva } from "./pk";
@@ -308,6 +310,7 @@ export function iniciaMundoUnit(u: Unit) {
     pk: rnd(), social: rr(.15, 1), ousadia: rr(.7, 1.35), zona: null,
     ganancia: rr(.5, 1.4), cacaT: 0, presa: null, etapa: 0, pronto: false,
     perfil: "criaturas", perfilT: W.simTime + rr(10, 40), azar: 0 };
+  estiloInicial(u);
   u.mochila = new Array(MOCHILA_N).fill(null);
   u.cofre = new Array(COFRE_N).fill(null);
   u.eqp = { cab: null, amu: null, arm: null, arma: null, esc: null, cal: null, ane: null, bot: null };
@@ -379,6 +382,11 @@ function aceitaConvite(b: Unit, a: Unit) {
   const meu = b.party ? b.party.membros.length : 1;
   if (meu > 1 && b.party!.lider === b) return false;
   let ch = w.social * .8 + .15;
+  /* quem caça sozinho quase nunca aceita; quem gosta de grupo quase sempre */
+  const e = w.estilo;
+  if (e === "solitario" || e === "pkSolo") ch *= .25;
+  else if (e === "grupo" || e === "pkGrupo") ch += .15;
+  if (e === "pkGrupo" && a.w && (a.w.estilo === "pkGrupo" || a.w.perfil === "maldoso")) ch += .25;
   if (dist(a.x, a.y, b.x, b.y) > 14) ch *= .4;
   if (a.skull === "red") ch *= .25;
   else if (a.skull) ch *= .6;
@@ -503,10 +511,20 @@ function escolheZona(p: Party, evitar: Zona | null = null) {
   for (const m of p.membros) { if (m.dead) continue; lv += m.lvl; n++; }
   lv = n ? lv / n : 1;
   const forca = poderParty(p), T = TATICAS[p.tatica || "cacadores"];
+  /* [SYSTEM: AI_ESTILO] o gosto do líder: power level vai atrás da
+     experiência por minuto, o acumulador da moeda, o ousado sobe uma
+     faixa e o cauteloso desce uma */
+  const L = p.lider && p.lider !== G.ctrl && p.lider.w ? p.lider : null;
+  const D = L ? estiloDe(L.w) : null;
+  const foco = D && D.foco !== "faixa" ? D.foco : null;
+  const fz = foco ? forcaDe(p.membros) : null;
+  let topo = 1;
+  if (foco) for (const z of W.zones) if (!z.errante) topo = Math.max(topo, notaZona(z, fz!, foco, D!.risco));
+  const passo = D ? (D.ousadia > 1.25 ? 1 : D.ousadia < .8 ? -1 : 0) : 0;
   let melhor: Zona | null = null, bs = -1e9;
   for (const z of W.zones) {
     if (z.errante) continue;
-    const ideal = 1 + Math.min(5, Math.floor(lv / 2.2));
+    const ideal = clamp(1 + Math.min(5, Math.floor(lv / 2.2)) + passo, 1, 7);
     let sc = -Math.abs(z.tier - ideal) * 3.2;
     if (z.tier > ideal + 1) sc -= 6;
     sc -= z.grupos * 2.4;
@@ -518,14 +536,15 @@ function escolheZona(p: Party, evitar: Zona | null = null) {
     const dz = dist(p.sq.cx, p.sq.cy, z.x, z.y) / W.N;
     sc += T.longe ? dz * 3 : -dz * 4.5;
     sc += z.tier * 1.1 * (forca > 420 * n ? 1 : .4);
+    if (foco) sc += Math.max(-8, notaZona(z, fz!, foco, D!.risco) / topo * 14);
     sc += rnd() * 2.2;
     if (sc > bs) { bs = sc; melhor = z; }
   }
   if (p.zona) p.zona.grupos = Math.max(0, p.zona.grupos - 1);
   p.zona = melhor;
   if (melhor) { melhor.grupos++; postoDe(p, melhor); }
-  p.zonaT = W.simTime + rr(T.zonaT[0], T.zonaT[1]) * 2.2;
-  p.modo = "caçada"; p.lutaT = W.simTime; p.largou = null;
+  p.zonaT = W.simTime + rr(T.zonaT[0], T.zonaT[1]) * 2.2 * (D ? D.fica : 1);
+  p.modo = "caçada"; p.lutaT = W.simTime; p.largou = null; p.esperaT = 0;
 }
 /* troca de ponto sem voltar à cidade: vazio, sem luta há muito tempo ou cansou */
 function trocarZona(p: Party, motivo: string) {
@@ -582,8 +601,11 @@ function atualizaPerfil(u: Unit) {
   w.perfilT = W.simTime + rr(20, 45);
   const antes = w.perfil;
   const fraco = u.lvl <= 3 || u.hp < u.maxHp * .5 || (saldo(u) < PRECO_HP * 4 && u.potHp < 4);
+  const pref = estiloDe(w).perfil;
   if (u.skull === "red") w.perfil = "todos";
   else if (u.injustas >= VERMELHA_N - 1 || fraco) w.perfil = "criaturas";
+  else if (pref === "maldoso" && u.lvl >= 5) w.perfil = rnd() < .75 ? (w.ganancia > 1.25 && rnd() < .3 ? "todos" : "maldoso") : "criaturas";
+  else if (pref === "justiceiro" && u.lvl >= 4) w.perfil = rnd() < .8 ? "justiceiro" : "criaturas";
   else {
     const r = rnd();
     if (w.pk > .72 && u.lvl >= 5 && r < w.pk * .45) w.perfil = w.ganancia > 1.2 && rnd() < .3 ? "todos" : "maldoso";
@@ -598,6 +620,8 @@ function escolheTatica(p: Party) {
   if (!L || !L.w || L === G.ctrl || (G.ctrl && p.membros.indexOf(G.ctrl) >= 0)) { p.tatica = "cacadores"; return; }
   const w = L.w, pf: AtqModo = w.perfil;
   let t = "cacadores";
+  const tE = estiloDe(w).tatica;
+  if (tE && rnd() < .65 && (TATICAS[tE].pk === 0 || pf === "maldoso" || pf === "todos" || (tE === "justiceiros" && pf === "justiceiro"))) { p.tatica = tE; return; }
   if (pf === "maldoso" || pf === "todos") t = (w.ganancia > 1.1 && rnd() < .5) ? "oportunistas" : "assassinos";
   else if (pf === "justiceiro") t = "justiceiros";
   else if (w.ganancia > 1.15 && w.pk > .5 && rnd() < .4) t = "oportunistas";
@@ -687,6 +711,18 @@ const ORDEM_NPC = ["comerciante", "ferreiro", "feiticeiro", "banqueiro"];
 function precisaCidade(u: Unit) {
   const w = u.w!;
   if (w.goal === "cidade" && !w.pronto) return true;
+  /* acabou a volta pelos NPCs e ainda falta algo: mais uma volta; na
+     terceira, sai assim mesmo (sem ouro, sem espaço) e não volta tão cedo */
+  if (w.goal === "cidade" && w.pronto && u.pz && faltaNaCidade(u)) {
+    if ((w.passes || 0) < 2) { w.etapa = 0; w.pronto = false; return true; }
+    w.cidadeOk = W.simTime + 150; w.passes = 0;
+    return false;
+  }
+  if (W.simTime < (w.cidadeOk || 0)) return false;
+  return faltaNaCidade(u);
+}
+function faltaNaCidade(u: Unit) {
+  const w = u.w!;
   const conj = u.maxMp > 0 && u.kind !== "knight";
   if (saldo(u) >= PRECO_HP * 5 && (u.potHp < 4 || (conj && u.potMp < 4))) return true;
   if (livres(u.mochila) <= 1) return true;
@@ -696,12 +732,14 @@ function precisaCidade(u: Unit) {
     w.lojaT = W.simTime + 45;
     const reserva = reservaIA(u);
     if (saldo(u) > reserva + 400 && (temMelhoria(u, reserva) || querForjar(u))) { w.lojaT = W.simTime + 180; return true; }
+    /* quem foca no equipamento confere a loja com mais frequência */
+    if (w.estilo === "equipador") w.lojaT = W.simTime + 25;
   }
   return false;
 }
 function irCidade(u: Unit) {
   const w = u.w!;
-  if (w.goal !== "cidade") { w.goal = "cidade"; w.etapa = 0; w.pronto = false; }
+  if (w.goal !== "cidade") { w.goal = "cidade"; w.etapa = 0; w.pronto = false; w.passes = 0; }
   if (!u.pz) {
     if (pzAtiva(u)) {
       /* com trava, espera longe da cidade: ali ninguém renova a trava dele */
@@ -732,6 +770,7 @@ function irCidade(u: Unit) {
     negociar(u, id);
     w.etapa++;
   }
+  if (!w.pronto) { liberarMochila(u, 3); w.passes = (w.passes || 0) + 1; }
   w.pronto = true;
   const f = nearestFree(W.cidade.x + clamp(u.driftX, -4.5, 4.5), W.cidade.y + clamp(u.driftY, -4.5, 4.5));
   w.dx = f[0] + .5; w.dy = f[1] + .5;
@@ -839,6 +878,31 @@ export function worldThink(u: Unit, sq: Squad) {
   }
 }
 
+/* ---------- [SYSTEM: VIGIA_CIDADE] ninguém fica parado na cidade ----------
+   Faz as compras, espera o grupo um pouco e sai. Se algo travar (NPC
+   inalcançável, grupo que não fica pronto, mochila entupida), a vigia
+   solta: encerra as compras, o líder parte com quem estiver pronto e o
+   membro que esperou demais segue sozinho. */
+const CIDADE_LOJA = 45, CIDADE_LIDER = 35, CIDADE_MEMBRO = 45;
+function vigiaCidade(u: Unit) {
+  const w = u.w;
+  if (!w || u === G.ctrl || u.dead) { if (w) w.cidadeT = 0; return; }
+  if (!u.pz) { w.cidadeT = 0; return; }
+  if (!w.cidadeT) { w.cidadeT = W.simTime; return; }
+  const t = W.simTime - w.cidadeT;
+  if (t < CIDADE_LOJA) return;
+  if (w.goal === "cidade" && !w.pronto) {
+    liberarMochila(u, 3);
+    w.pronto = true; w.etapa = 99; w.passes = 0;
+    w.cidadeOk = W.simTime + 150; w.lojaT = W.simTime + 240;
+  }
+  const p = u.party;
+  if (!p || p.modo !== "acampar") { if (t > CIDADE_MEMBRO) { w.cidadeOk = W.simTime + 150; w.goal = "caça"; } return; }
+  if (G.ctrl && p.lider === G.ctrl) return;
+  if (p.lider === u && t > CIDADE_LIDER && u.hp > u.maxHp * .6) { escolheZona(p); w.cidadeT = W.simTime; return; }
+  if (p.lider !== u && t > CIDADE_MEMBRO && p.membros.length > 1) { deixarEquipe(u); w.cidadeT = W.simTime - CIDADE_LIDER; }
+}
+
 /* ---------- [SYSTEM: WORLD_ZONE] disputa de ponto ---------- */
 function lotacaoZona(z: Zona) { return Math.max(1, Math.round(z.alvoPop / 5)); }
 function disputaZona(p: Party) {
@@ -927,8 +991,10 @@ export function worldStep() {
   for (const u of U) {
     if (u.dead || u.beast) continue;
     caveiraRelogio(u);
+    reavaliarEstilo(u);
     atualizaPerfil(u);
-    if (u.w) u.w.azar *= .994;
+    if (u.w) { u.w.azar *= .994; if (u.w.mortes) u.w.mortes *= .9985; }
+    vigiaCidade(u);
     if (u.pz) { u.hp = Math.min(u.maxHp, u.hp + u.maxHp * .04); u.mp = Math.min(u.maxMp, u.mp + u.maxMp * .04); }
   }
   const PS = W.parties;
@@ -948,6 +1014,7 @@ export function worldStep() {
     if (p.puxador && (p.puxador.dead || p.puxador.party !== p)) p.puxador = null;
     avaliaPk(p);
     if (p.modo === "pk") continue;
+    if (G.ctrl && p.lider === G.ctrl) continue;
     const vivos = vivosParty(p);
     let feridos = 0, prontos = 0, cidadeJa = 0;
     for (const m of p.membros) {
@@ -989,7 +1056,11 @@ export function worldStep() {
           break;
         }
       }
-      if (vivos && prontos === vivos && W.simTime > p.t && (p.membros.length >= p.min || W.simTime > p.paciencia)) escolheZona(p);
+      /* todos prontos, ou 15 s de espera com metade pronta: o grupo parte
+         e quem ainda está comprando alcança depois ("me encontra lá") */
+      if (!p.esperaT) p.esperaT = W.simTime;
+      const metade = prontos >= Math.max(1, Math.ceil(vivos / 2)) && W.simTime - p.esperaT > 15;
+      if (vivos && (prontos === vivos || metade) && W.simTime > p.t && (p.membros.length >= p.min || W.simTime > p.paciencia)) { escolheZona(p); p.esperaT = 0; }
     }
   }
   for (let i = 0; i < W.bandos.length; i++) {

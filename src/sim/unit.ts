@@ -76,7 +76,7 @@ export function makeUnit(team: number, kind: KindKey, x: number, y: number): Uni
     tiros: 0, tiroT: 0, exAte: {}, ordem: null, encomenda: null, npcAlvo: null,
     potHp: 0, potMp: 0, pressa: 0, paral: 0, alvoManual: null,
     mp: K.mp, maxMp: K.mp, lvl: 1, xp: 0, bonus: 0, velo: 1, regHp: 0, regMp: 0,
-    attr: { str: 0, dex: 0, def: 0, mag: 0, hp: 0, mp: 0 }, pts: 0, manual: false, proporcao: null, magic: 0, defesa: 0,
+    attr: { str: 0, dex: 0, def: 0, mag: 0, hp: 0, mp: 0 }, pts: 0, manual: false, proporcao: null, seguiu: null, magic: 0, defesa: 0,
     plano: beast ? null : sorteiaPlano(kind as VocKey),
     post: POSTURAS[Math.floor(rnd() * POSTURAS.length)], postT: rr(6, 22),
     driftX: rr(-5, 5), driftY: rr(-5, 5),

@@ -58,18 +58,51 @@ export function pontoDoPlano(u: Unit): AttrKey {
   for (const k in w) { r -= w[k as AttrKey]!; if (r <= 0) return k as AttrKey; }
   return "hp";
 }
-/* o atributo mais atrasado em relação à proporção guardada ao largar o comando */
+/* [SYSTEM: AUTOBUILD] a proporção é o que foi posto à mão; os pontos
+   seguintes vão para o atributo mais atrasado nela. 100% em magia
+   continua tudo em magia; 1 em mana e 1 em magia segue meio a meio. */
+export const ATTR_ZERO = (): Record<AttrKey, number> => ({ str: 0, dex: 0, def: 0, mag: 0, hp: 0, mp: 0 });
+export function temProporcao(u: Unit) {
+  const P = u.proporcao;
+  if (!P) return false;
+  for (const k in P) if (P[k as AttrKey] > 0) return true;
+  return false;
+}
 export function pontoProporcional(u: Unit): AttrKey {
-  const P = u.proporcao || u.attr, a = u.attr;
-  let tp = 0, ta = 0;
-  for (const k in P) { tp += P[k as AttrKey]; ta += a[k as AttrKey]; }
-  if (tp <= 0) return pontoDoPlano(u);
+  const P = u.proporcao;
+  if (!P || !temProporcao(u)) return pontoDoPlano(u);
+  const S = u.seguiu || (u.seguiu = ATTR_ZERO());
+  let tp = 0, tt = 0;
+  for (const k in P) { const kk = k as AttrKey; tp += P[kk]; tt += P[kk] + (S[kk] || 0); }
   let melhor: AttrKey = "hp", bd = -1e9;
   for (const k in P) {
     const kk = k as AttrKey;
     if (!P[kk]) continue;
-    const d = P[kk] / tp - (a[kk] + 1) / (ta + 1);
-    if (d > bd) { bd = d; melhor = kk; }
+    /* quanto falta a esse atributo para a fatia dele no total seguido */
+    const d = P[kk] / tp * (tt + 1) - (P[kk] + (S[kk] || 0));
+    if (d > bd + 1e-9) { bd = d; melhor = kk; }
+  }
+  S[melhor] = (S[melhor] || 0) + 1;
+  return melhor;
+}
+/* a proporção em texto: "magia 67% · mana 33%" */
+export function proporcaoTexto(u: Unit, nomes: Record<AttrKey, string>) {
+  const P = u.proporcao;
+  if (!P || !temProporcao(u)) return "";
+  let t = 0;
+  for (const k in P) t += P[k as AttrKey];
+  const partes: string[] = [];
+  for (const k in P) { const v = P[k as AttrKey]; if (v > 0) partes.push(nomes[k as AttrKey].toLowerCase() + " " + Math.round(v / t * 100) + "%"); }
+  return partes.join(" · ");
+}
+/* plano que combina com o jeito de jogar: o cauteloso puxa defesa, o
+   ousado puxa ataque */
+export function planoPorDefesa(kind: VocKey, defensivo: boolean) {
+  let melhor = PLANOS[kind][0], bs = defensivo ? -1 : 2;
+  for (const p of PLANOS[kind]) {
+    let t = 0; for (const k in p.w) t += p.w[k as AttrKey]!;
+    const d = ((p.w.def || 0) + (p.w.hp || 0)) / t;
+    if (defensivo ? d > bs : d < bs) { bs = d; melhor = p; }
   }
   return melhor;
 }

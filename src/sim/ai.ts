@@ -116,6 +116,17 @@ function vizinhos(u: Unit, e: Unit, r: number) {
   for (let j = 0; j < k; j++) if (inimigo(u, QBUF2[j])) n++;
   return n;
 }
+/* quem está me acertando agora (no alcance dele e mirando em mim); o
+   mais fraco primeiro, que cai mais rápido. Vale a última percepção. */
+export function atacanteEm(u: Unit) {
+  let a: Unit | null = null, ah = 1e9;
+  for (let i = 0; i < candN; i++) {
+    const c = CAND[i], e = c.e;
+    if (e.dead || e.target !== u || c.d > e.K.range + 1.2) continue;
+    if (e.hp < ah) { ah = e.hp; a = e; }
+  }
+  return a;
+}
 export function countNearP(rad: number) { let n = 0; for (let i = 0; i < candN; i++) if (CAND[i].d <= rad) n++; return n; }
 
 /* ---------- utilidade ---------- */
@@ -177,6 +188,12 @@ export function unitThink(u: Unit, sq: Squad) {
     if (!u.post.solo && sq.focus && !sq.focus.dead && dist(u.x, u.y, sq.focus.x, sq.focus.y) < K.sight + 3) tgt = sq.focus;
     if (!tgt) tgt = P.best;
     if (P.closest && P.closestD < K.range * .7) tgt = P.closest;
+  }
+  /* [SYSTEM: AI_ATACANTE] a caminho de um alvo longe, quem já está
+     batendo em mim cai primeiro: sangrar a viagem inteira não compensa */
+  if (tgt && !u.beast && dist(u.x, u.y, tgt.x, tgt.y) > K.range * 1.05) {
+    const a = atacanteEm(u);
+    if (a) tgt = a;
   }
   u.target = tgt;
 

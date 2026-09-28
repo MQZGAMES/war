@@ -13,7 +13,7 @@ import { laco } from "../game/loop";
 import { salvarLocalMundo, salvarPref, PREF } from "../sim/save";
 import { pausarAudio } from "../audio/sfx";
 import { magiaDe, slotDe, beberPocao, lancar } from "../sim/spells";
-import { alvoMaisProximo, pausaRefil, mirarMagia } from "../sim/player";
+import { alvoMaisProximo, pausaRefil, pausarCaca, mirarMagia } from "../sim/player";
 import { declararPk } from "../sim/relations";
 import { retratoDe } from "../render/portrait";
 import { overlayCfg } from "../render/overlay";
@@ -71,7 +71,7 @@ export function irPara(nome: Tela) {
   G.paused = pausa;
   laco.pausadoPorTela = true;
   pausarAudio(false);
-  if (nome === "menu") { fecharDeck(); G.mirandoSlot = -1; G.convidando = false; if (G.ctrl) salvarLocalMundo(true); }
+  if (nome === "menu") { fecharDeck(); G.mirandoSlot = -1; G.convidando = false; if (G.ctrl) salvarLocalMundo("nao"); }
   if (nome === "ajuda") { PREF.ajudaVista = 1; salvarPref(); }
   atualizar();
 }
@@ -99,6 +99,7 @@ export function abrirNpc(id: string) {
   const c = G.ctrl;
   if (!c) return;
   if (pzAtiva(c)) { avisoDe(c, "Com trava de PZ nenhum NPC atende · " + Math.ceil(pzRestante(c)) + " s", "#e0b93a"); return; }
+  pausarCaca(60);
   npcAberto.value = id; painel.value = "npc";
   atualizar();
 }
@@ -150,11 +151,15 @@ export function ligarInterface() {
   hooks.onAssumir = (u: Unit) => { painel.value = ""; retrato.value = retratoDe(u); atualizar(); };
   hooks.onLargar = () => { painel.value = ""; npcAberto.value = null; retrato.value = ""; atualizar(); };
   hooks.setCam = (a: boolean) => { G.autoCam = a; atualizar(); };
+  hooks.equipMudou = (u: Unit) => { if (u === G.ctrl) retrato.value = retratoDe(u); atualizar(); };
+  hooks.pvpMudou = () => { salvarPref(); atualizar(); };
   laco.aoTick = () => {
     tick.value++;
     /* o balcão fecha se o herói se afasta ou ganha trava */
     const c = G.ctrl;
     if (painel.value === "npc" && (!c || c.dead || !npcAberto.value || !npcPerto(c, npcAberto.value))) { painel.value = ""; npcAberto.value = null; }
+    /* balcão aberto segura a caça automática ali */
+    if (painel.value === "npc") pausarCaca(20);
   };
   entrada.acoes = {
     aoTocarNpc: (id) => abrirNpc(id),
@@ -174,10 +179,10 @@ export function ligarInterface() {
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) return;
     if (tela.value === "jogo") irPara("menu");
-    else if (G.ctrl) salvarLocalMundo(true);
+    if (G.ctrl) salvarLocalMundo("sair");
     pausarAudio(true);
   });
-  window.addEventListener("pagehide", () => { if (G.ctrl && G.running) salvarLocalMundo(true); });
+  window.addEventListener("pagehide", () => { if (G.ctrl && G.running) salvarLocalMundo("sair"); });
   void W;
 }
 function npcPerto(u: Unit, id: string) {

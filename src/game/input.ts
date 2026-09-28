@@ -18,7 +18,7 @@ import { NPC_ALCANCE } from "../sim/map";
 import { pzAtiva } from "../sim/pk";
 import { podeAtacarManual, declararPk } from "../sim/relations";
 import { convidar } from "../sim/world";
-import { avisoPz, mirarMagia, pausaRefil } from "../sim/player";
+import { avisoPz, ligarPvp, mirarMagia, pausaRefil, pvpLigado } from "../sim/player";
 import { avisoDe, fx } from "../sim/fx";
 import type { Unit } from "../sim/types";
 import { iniciarAudio } from "../audio/sfx";
@@ -191,7 +191,11 @@ function tocar(px: number, py: number) {
     }
     if (best && podeAtacarManual(c, best)) {
       if (c.alvoManual === best) { c.alvoManual = null; c.target = null; }
-      else { declararPk(c, best); c.alvoManual = best; c.target = best; c.ordem = null; c.npcAlvo = null; }
+      else {
+        /* tocar num personagem força o PvP */
+        if (!best.beast && !pvpLigado()) ligarPvp(c, "atacando " + best.name);
+        declararPk(c, best); c.alvoManual = best; c.target = best; c.ordem = null; c.npcAlvo = null;
+      }
     } else {
       c.ordem = { x: gx, y: gy }; c.goalKey = ""; c.encomenda = null; c.npcAlvo = null;
       marcaChao(gx, gy);

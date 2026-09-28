@@ -5,10 +5,12 @@
    [SYSTEM: LIDER] — mesma lógica da v54.
    ================================================================ */
 import { planejarMagia } from "./tatica";
-import { CHUVA_ALCANCE, CUSTO, MET_ALCANCE, NUM_SLOTS, SPELLS, ST, type SpellKey } from "./data";
+import { CHUVA_ALCANCE, CUSTO, MET_ALCANCE, MODO_PVP, NUM_SLOTS, SPELLS, ST, type SpellKey } from "./data";
 import { avisoDe, fx } from "./fx";
-import { comprarMelhorias, comprarPocoes, depositarOuro, ehPocao, guardarNoCofre, livres, mantem, saldo, semFrasco, venderItem, PRECO_POCAO, PRECO_HP, PRECO_MP } from "./items";
-import { dist, clamp, dist2 } from "./rng";
+import { alvoForja, comprarMelhorias, comprarPocoes, depositarOuro, ehPocao, forjar, guardarNoCofre, livres, lojaEsgotada, mantem, nomeItem, saldo, semFrasco, temMelhoria, venderItem, PRECO_POCAO, PRECO_HP, PRECO_MP } from "./items";
+import { dist, clamp, dist2, rnd, rr } from "./rng";
+import { forcaDe, melhorZona } from "./caca";
+import type { Zona } from "./types";
 import { los, losU, NPC_ALCANCE, npcDe, QBUF, queryRadius } from "./map";
 import { pzAtiva, pzRestante } from "./pk";
 import { aliado, declararPk, inimigo, odeia, podeAtacarManual, querAtacar } from "./relations";
@@ -17,8 +19,42 @@ import { G, W, hooks } from "./state";
 import { dmgFis } from "./stats";
 import type { Squad, Unit } from "./types";
 import { goTo, setState } from "./unit";
-import { perceber } from "./ai";
-import { worldThink } from "./world";
+import { atacanteEm, perceber } from "./ai";
+import { faixaNivelZona, worldThink } from "./world";
+
+/* ============================================================
+   [SYSTEM: PVP] o botão de PvP do HUD. Desligado, o personagem sob
+   comando não fere nenhum personagem: nem alvo automático, nem revide,
+   nem magia de área. Os modos que caçam personagens (Justiceiro,
+   Maldoso, Todos) ligam o PvP; tocar num personagem ou revidar um
+   ataque também liga. Desligar volta o auto ataque para Criaturas.
+   ============================================================ */
+export const pvpLigado = () => !!G.AUTO.ataque.pvp;
+export function ligarPvp(u: Unit | null, motivo: string) {
+  if (G.AUTO.ataque.pvp) return;
+  G.AUTO.ataque.pvp = 1;
+  if (u) avisoDe(u, "PvP ligado · " + motivo, "#e0685a");
+  hooks.pvpMudou();
+}
+export function desligarPvp(u: Unit | null) {
+  const A = G.AUTO.ataque;
+  A.pvp = 0;
+  if (MODO_PVP[A.modo]) A.modo = "criaturas";
+  if (u) {
+    if (u.alvoManual && !u.alvoManual.beast) u.alvoManual = null;
+    if (u.target && !u.target.beast) u.target = null;
+    if (u.encomenda) u.encomenda = null;
+    if (u.w) { u.w.pkT = 0; u.w.alvoPk = null; }
+    u.think = 0;
+  }
+  hooks.pvpMudou();
+}
+/* trocar o modo do auto ataque acerta o PvP junto */
+export function mudarModoAtaque(m: typeof G.AUTO.ataque.modo) {
+  G.AUTO.ataque.modo = m;
+  if (MODO_PVP[m]) G.AUTO.ataque.pvp = 1;
+  else desligarPvp(G.ctrl);
+}
 
 /* ---------- [SYSTEM: AUTO_NIVEL] janela de nível da presa ---------- */
 const JAN = { lo: 1, hi: 8 };
@@ -33,7 +69,7 @@ export function janelaNivel(u: Unit) {
 export function valeAuto(u: Unit, e: Unit) {
   const m = G.AUTO.ataque.modo;
   if (m === "desligado" || !querAtacar(u, e, m)) return false;
-  if (!e.beast) return true;
+  if (!e.beast) return pvpLigado();
   const J = janelaNivel(u);
   return G.AUTO.ataque.nivelAuto ? e.lvl <= J.hi + 3 : (e.lvl >= J.lo && e.lvl <= J.hi);
 }
@@ -46,13 +82,18 @@ export function notaPresa(u: Unit, e: Unit, d2: number) {
   else s = -200 - (lv - J.hi) * 60;
   return s - Math.sqrt(d2) * 4;
 }
-function alvoAuto(u: Unit) {
+/* `viagem`: a caminho do ponto de caça, só desvia para presa boa e perto
+   (ou para quem vier atrás dele), sem se perder em bicho fraco */
+function alvoAuto(u: Unit, viagem = false) {
   let melhor: Unit | null = null, ms = -1e9;
-  const R2 = u.K.sight * u.K.sight * 16;
+  /* na viagem, só o que está no caminho (7 m); bicho manso fica em paz */
+  const R2 = viagem ? 49 : u.K.sight * u.K.sight * 16;
+  const J = janelaNivel(u);
   for (const e of W.units) {
     if (e.dead || !valeAuto(u, e)) continue;
     const d2 = dist2(u.x, u.y, e.x, e.y);
     if (d2 > R2) continue;
+    if (viagem && e.beast && e.target !== u && (e.lvl < J.lo || !e.K.aggro)) continue;
     const s = notaPresa(u, e, d2);
     if (s > ms) { ms = s; melhor = e; }
   }
@@ -65,6 +106,8 @@ function agressorAuto(u: Unit) {
   let melhor: Unit | null = null, md = 1e9;
   for (const e of W.units) {
     if (e.dead || !podeAtacarManual(u, e)) continue;
+    /* PvP desligado: só revida personagem se o revide estiver ligado,
+       e aí o PvP liga junto (quem bateu primeiro foi ele) */
     const q = u.atkBy[e.id];
     if (q === undefined || W.simTime - q > 8) continue;
     const d = dist2(u.x, u.y, e.x, e.y);
@@ -111,12 +154,79 @@ function autoEspecial(u: Unit) {
   u.target = guardado;
   void ok;
 }
+/* ============================================================
+   [SYSTEM: AUTO_CACA] com auto ataque, quem está no comando vai
+   sozinho para a caça que mais rende (power level: experiência por
+   minuto para a força dele ou do grupo que lidera). Num grupo da IA,
+   vai para onde o líder levar. Troca de ponto quando esvazia, quando
+   passa 40 s sem luta, a cada 5 min ou depois de subir 3 níveis.
+   ============================================================ */
+const CACA = { u: 0, zona: null as Zona | null, ate: 0, lutaT: 0, lvl: 0, px: 0, py: 0, pz: null as Zona | null, lojaT: 0, cidadeOk: 0, pausaAte: 0 };
+export const cacaLigada = () => G.AUTO.ataque.modo !== "desligado" && !!G.AUTO.ataque.cacar;
+export function zonaDaCaca(u: Unit): Zona | null {
+  const p = u.party;
+  if (p && p.lider && p.lider !== u && !p.lider.dead && p.membros.length > 1 && p.modo === "caçada" && p.zona) return p.zona;
+  if (CACA.u !== u.id) { CACA.u = u.id; CACA.zona = null; }
+  const z = CACA.zona;
+  let trocar = !z || W.simTime > CACA.ate || u.lvl >= CACA.lvl + 3;
+  if (z && dist(u.x, u.y, z.x, z.y) < z.r + 4) {
+    if (z.pop <= Math.max(1, z.alvoPop * .2)) trocar = true;
+    if (W.simTime - CACA.lutaT > 40) trocar = true;
+  }
+  if (!trocar) return z;
+  const lidera = p && p.lider === u && p.membros.length > 1;
+  const nova = melhorZona(forcaDe(lidera ? p!.membros : [u]), "xp", 1, z);
+  CACA.zona = nova; CACA.ate = W.simTime + 300; CACA.lutaT = W.simTime; CACA.lvl = u.lvl;
+  /* o grupo do jogador ocupa o ponto: a IA conta com isso para não lotar */
+  if (p && p.lider === u) {
+    if (p.zona) p.zona.grupos = Math.max(0, p.zona.grupos - 1);
+    p.zona = nova; p.modo = nova ? "caçada" : "acampar";
+    if (nova) nova.grupos++;
+  }
+  if (nova && nova !== z) avisoDe(u, "Caça: " + nova.name + " · " + faixaNivelZona(nova), "#9fd0ff");
+  return nova;
+}
+function irParaCaca(u: Unit, z: Zona) {
+  if (CACA.pz !== z) {
+    CACA.pz = z;
+    const a = (u.id * 1.7) % 6.283;
+    CACA.px = z.x + Math.cos(a) * z.r * .5; CACA.py = z.y + Math.sin(a) * z.r * .5;
+  } else if (dist(u.x, u.y, CACA.px, CACA.py) < 1.4) {
+    /* no ponto e sem presa à vista: passeia por ele atrás de criatura */
+    const a = rnd() * 6.283, r = Math.sqrt(rnd()) * z.r * .85;
+    CACA.px = z.x + Math.cos(a) * r; CACA.py = z.y + Math.sin(a) * r;
+  }
+  setState(u, ST.ADVANCE);
+  goTo(u, CACA.px, CACA.py, "caca");
+}
+/* quem está me acertando agora; o mais fraco primeiro */
+function atacanteAgora(u: Unit) {
+  let a: Unit | null = null, ah = 1e9;
+  const m = queryRadius(u.x, u.y, 6);
+  for (let i = 0; i < m; i++) {
+    const e = QBUF[i];
+    if (e === u || e.dead || e.target !== u || !podeAtacarManual(u, e)) continue;
+    if (!e.beast && !pvpLigado()) continue;
+    if (dist(u.x, u.y, e.x, e.y) > e.K.range + 1.2) continue;
+    if (e.hp < ah) { ah = e.hp; a = e; }
+  }
+  return a;
+}
 function autoAtaque(u: Unit) {
-  const caca = G.AUTO.ataque.modo === "desligado" ? null : alvoAuto(u);
+  const A = G.AUTO.ataque;
+  const z = cacaAtiva() ? zonaDaCaca(u) : null;
+  const viagem = !!z && dist(u.x, u.y, z.x, z.y) > z.r + 7;
+  let caca = A.modo === "desligado" ? null : alvoAuto(u, viagem);
+  /* o alvo escolhido ainda está longe e alguém já bate em mim: esse primeiro */
+  if (caca && dist(u.x, u.y, caca.x, caca.y) > u.K.range * 1.05) { const a = atacanteAgora(u); if (a) caca = a; }
   const alvo = caca || agressorAuto(u);
   u.target = alvo;
-  if (!alvo) { u.path = null; u.goal = null; setState(u, ST.ADVANCE); return; }
-  if (!alvo.beast) declararPk(u, alvo);
+  if (!alvo) {
+    if (z) { irParaCaca(u, z); return; }
+    u.path = null; u.goal = null; setState(u, ST.ADVANCE); return;
+  }
+  if (alvo.beast) CACA.lutaT = W.simTime;
+  else { if (!pvpLigado()) ligarPvp(u, "revidando " + alvo.name); declararPk(u, alvo); }
   autoEspecial(u);
   if (!caca) {
     u.path = null; u.goal = null;
@@ -191,6 +301,7 @@ export function revidarJa(u: Unit, src: Unit) {
   const t = u.alvoManual && !u.alvoManual.dead ? u.alvoManual : u.target;
   if (t === src) return;
   if (t && !t.dead) { const q = u.atkBy[t.id]; if (q !== undefined && W.simTime - q < 3) return; }
+  if (!src.beast && !pvpLigado()) ligarPvp(u, "revidando " + src.name);
   u.alvoManual = src; u.target = src; u.think = 0; u.npcAlvo = null;
 }
 
@@ -199,14 +310,67 @@ export function revidarJa(u: Unit, src: Unit) {
    etapas (vender → poções → equipamento → banco). Ordem sua pausa.
    ============================================================ */
 const REFIL_ESPERA = 20, RESERVA_REFIL = 20;
+/* poção zerada chama à cidade só com ouro para ao menos 5 dela; mana
+   zerada não chama o cavaleiro (a mana dele volta sozinha) */
 function faltaPocao(u: Unit) {
   const R = G.AUTO.refil;
-  return !!R.pocoes && ((R.hp > 0 && u.potHp <= 0) || (R.mp > 0 && u.maxMp > 0 && u.potMp <= 0));
+  if (!R.pocoes) return false;
+  if (R.hp > 0 && u.potHp <= 0 && saldo(u) >= PRECO_HP * 5) return true;
+  return R.mp > 0 && u.maxMp > 0 && u.kind !== "knight" && u.potMp <= 0 && saldo(u) >= PRECO_MP * 5;
 }
 function precisaRefil(u: Unit) {
   const R = G.AUTO.refil;
   if (faltaPocao(u)) return "Poção acabou";
   if ((R.vender || R.banco) && livres(u.mochila) <= 1) return "Mochila cheia";
+  /* na caça automática, ouro sobrando e algo a comprar ou forjar também
+     chama à cidade (no máximo uma conferida a cada 2 min) */
+  if (cacaLigada() && W.simTime > CACA.lojaT) {
+    CACA.lojaT = W.simTime + 120;
+    const livre = saldo(u) - reservaRefil(u);
+    if (livre > 600 + u.lvl * 40) {
+      if (R.comprar && G.AUTO.equip && temMelhoria(u, reservaRefil(u))) return "Equipamento melhor à venda";
+      if (querForjarRefil(u)) return "Hora de forjar no Ferreiro";
+    }
+  }
+  return "";
+}
+/* [SYSTEM: FORJA_REFIL] com a loja esgotada (tudo no melhor que ela
+   vende), o refil passa no Ferreiro e sobe o equipamento até o teto
+   escolhido, sem mexer no ouro das poções */
+function querForjarRefil(u: Unit) {
+  const R = G.AUTO.refil;
+  if (!R.forjar || !G.AUTO.equip || !lojaEsgotada(u)) return false;
+  return !!alvoForja(u, R.forjaAte, saldo(u) - reservaRefil(u) - 100);
+}
+function forjaRefil(u: Unit) {
+  const R = G.AUTO.refil;
+  if (!querForjarRefil(u)) return 0;
+  let n = 0, ok = 0, caiu = 0;
+  const feitos: string[] = [];
+  for (let k = 0; k < 10; k++) {
+    const it = alvoForja(u, R.forjaAte, saldo(u) - reservaRefil(u) - 100);
+    if (!it) break;
+    const r = forjar(u, it);
+    if (!r) break;
+    n++;
+    if (r.ok) { ok++; feitos.push(nomeItem(it)); } else if (r.caiu) caiu++;
+  }
+  if (n) {
+    const falhas = n - ok;
+    avisoDe(u, "Ferreiro: " + (ok ? feitos.slice(-2).join(", ") + (ok > 2 ? " e mais " + (ok - 2) : "") : "nenhuma melhoria")
+      + (falhas ? " · " + falhas + (falhas > 1 ? " falhas" : " falha") + (caiu ? " (" + caiu + " caiu um nível)" : "") : ""), ok ? "#e0bd63" : "#c96a5a");
+    fx({ t: "ui", s: ok ? "equip" : "nega" });
+    hooks.equipMudou(u);
+  }
+  return n;
+}
+/* na cidade (ao renascer ou de passagem), o que falta fazer antes de sair */
+function motivoCidade(u: Unit) {
+  const R = G.AUTO.refil;
+  if (R.pocoes && saldo(u) >= PRECO_POCAO && ((R.hp > 0 && u.potHp < R.hp) || (R.mp > 0 && u.maxMp > 0 && u.potMp < R.mp))) return "Repondo as poções";
+  if (R.vender) for (const it of u.mochila) if (it && !ehPocao(it) && !mantem(u, it)) return "Vendendo o loot";
+  if (R.comprar && G.AUTO.equip && temMelhoria(u, reservaRefil(u))) return "Equipamento melhor à venda";
+  if (querForjarRefil(u)) return "Melhorando o equipamento no Ferreiro";
   return "";
 }
 function reservaRefil(u: Unit) {
@@ -227,12 +391,13 @@ function iniciaRefil(u: Unit, motivo: string) {
   const trava = pzAtiva(u), R = G.AUTO.refil;
   const rota: string[] = [];
   if (R.vender || (R.comprar && G.AUTO.equip)) rota.push("comerciante");
+  if (R.forjar && G.AUTO.equip) rota.push("ferreiro");
   if (R.pocoes) rota.push("feiticeiro");
   if (R.banco) rota.push("banqueiro");
   u.refil = { fase: trava ? "isolar" : "rota", i: 0, rota, x: u.x, y: u.y, t: 0 };
   u.alvoManual = null; u.target = null; u.ordem = null; u.encomenda = null; u.npcAlvo = null; u.goalKey = "";
-  const n = chamaGrupo(u);
-  avisoDe(u, (motivo || "Poção acabou") + (trava ? " · com trava de PZ: me afastando da briga" : " · indo à cidade") + (n ? " · o grupo vem junto" : ""), "#e0bd63");
+  const n = u.pz ? 0 : chamaGrupo(u);
+  avisoDe(u, (motivo || "Poção acabou") + (u.pz ? "" : trava ? " · com trava de PZ: me afastando da briga" : " · indo à cidade") + (n ? " · o grupo vem junto" : ""), "#e0bd63");
 }
 function vaiComprar(m: Unit) {
   const w = m.w;
@@ -286,9 +451,15 @@ function balcaoRefil(u: Unit, id: string) {
       const k = comprarMelhorias(u, reservaRefil(u));
       if (k) avisoDe(u, k + (k > 1 ? " itens melhores vestidos" : " item melhor vestido"), "#8fe6a8");
     }
+  } else if (id === "ferreiro") {
+    forjaRefil(u);
   } else if (id === "feiticeiro") {
-    const hp = R.hp > u.potHp ? comprarPocoes(u, "hp", R.hp - u.potHp) : 0;
-    const mp = u.maxMp > 0 && R.mp > u.potMp ? comprarPocoes(u, "mp", R.mp - u.potMp) : 0;
+    /* sem ouro para tudo, divide: as duas poções na mesma proporção */
+    let qh = Math.max(0, R.hp - u.potHp), qm = u.maxMp > 0 ? Math.max(0, R.mp - u.potMp) : 0;
+    const custo = qh * PRECO_HP + qm * PRECO_MP, verba = saldo(u);
+    if (custo > verba && custo > 0) { const k = verba / custo; qh = Math.floor(qh * k); qm = Math.floor(qm * k); }
+    const hp = qh ? comprarPocoes(u, "hp", qh) : 0;
+    const mp = qm ? comprarPocoes(u, "mp", qm) : 0;
     if (hp || mp) avisoDe(u, "Poções: +" + hp + " vida · +" + mp + " mana", "#8fe6a8");
     else if (saldo(u) < PRECO_POCAO) avisoDe(u, "Sem ouro para poções", "#e0b93a");
   } else {
@@ -323,6 +494,8 @@ function passoRefil(u: Unit) {
   if (r.fase === "rota") {
     while (r.i < r.rota.length) {
       const id = r.rota[r.i], n = npcDe(id);
+      /* nada a forjar (loja ainda tem melhor, sem ouro, tudo no teto): nem passa lá */
+      if (id === "ferreiro" && !querForjarRefil(u)) { r.i++; continue; }
       if (dist(u.x, u.y, n.x, n.y) > NPC_ALCANCE) { setState(u, ST.ADVANCE); goTo(u, n.x, n.y, "refil" + r.i); return; }
       balcaoRefil(u, id); r.i++;
     }
@@ -332,19 +505,26 @@ function passoRefil(u: Unit) {
     if (W.simTime < r.t && grupoComprando(u)) { u.path = null; u.goal = null; setState(u, ST.HEAL); return; }
     r.fase = "voltar";
     if (u.party && u.party.lider === u && vivos(u) > 1) avisoDe(u, "Grupo pronto · de volta à caça", "#8fe6a8");
+    /* na caça automática não volta ao ponto de onde saiu: a caça escolhe
+       de novo (pode ter subido de nível, o ponto pode ter esvaziado) */
+    if (cacaLigada()) {
+      u.refil = null; u.path = null; CACA.cidadeOk = W.simTime + 90; CACA.ate = 0;
+      if (!(u.party && u.party.lider === u && vivos(u) > 1)) avisoDe(u, "Pronto · de volta à caça", "#8fe6a8");
+      return;
+    }
   }
   if (dist(u.x, u.y, r.x, r.y) < 1.6) { u.refil = null; u.path = null; avisoDe(u, "De volta à caça", "#8fe6a8"); return; }
   setState(u, ST.ADVANCE); goTo(u, r.x, r.y, "volta");
 }
 function vivos(u: Unit) { let n = 0; if (u.party) for (const m of u.party.membros) if (!m.dead) n++; return n; }
-export const REFIL_TXT: Record<string, string> = { comerciante: "no Comerciante", feiticeiro: "comprando poções", banqueiro: "no banco" };
+export const REFIL_TXT: Record<string, string> = { comerciante: "no Comerciante", ferreiro: "no Ferreiro", feiticeiro: "comprando poções", banqueiro: "no banco" };
 
 export function ctrlThink(u: Unit, sq: Squad) {
   autoCuraPasso(u);
   const motivo = (!u.refil && G.AUTO.refil.ligado && !u.pz && !refilSuspenso(u)) ? precisaRefil(u) : "";
-  if (motivo) {
-    if (motivo !== "Poção acabou" || saldo(u) >= PRECO_POCAO) iniciaRefil(u, motivo);
-    else if (W.simTime > (u.refilAvisoT || 0)) { u.refilAvisoT = W.simTime + 30; avisoDe(u, "Poção acabou e não há ouro para repor", "#e0b93a"); }
+  if (motivo) iniciaRefil(u, motivo);
+  else if (G.AUTO.refil.ligado && G.AUTO.refil.pocoes && u.potHp <= 0 && !u.pz && W.simTime > (u.refilAvisoT || 0) && saldo(u) < PRECO_HP * 5) {
+    u.refilAvisoT = W.simTime + 90; avisoDe(u, "Sem poção de vida e sem ouro para repor", "#e0b93a");
   }
   if (u.refil) { passoRefil(u); return; }
   if (u.npcAlvo) {
@@ -368,11 +548,30 @@ export function ctrlThink(u: Unit, sq: Squad) {
     return;
   }
   if (u.alvoManual && (u.alvoManual.dead || !podeAtacarManual(u, u.alvoManual))) u.alvoManual = null;
+  /* andar à mão (toque no chão, manche) segura a caça automática ali um pouco */
+  if (u.ordem || G.tvn) pausarCaca(G.tvn ? 45 : 90);
   if (u.ordem) { u.target = null; playerThink(u); return; }
-  if (u.pz) { u.target = null; u.path = null; u.goal = null; setState(u, ST.ADVANCE); return; }
+  if (u.pz) {
+    /* [SYSTEM: AUTO_CACA] na cidade: faz o que falta (poções, loot,
+       equipamento, forja) e sai para a caça; nunca fica parado ali */
+    if (cacaAtiva()) {
+      if (G.AUTO.refil.ligado && W.simTime > CACA.cidadeOk && W.simTime > (u.refilEspera || 0)) {
+        const m = motivoCidade(u);
+        if (m) { iniciaRefil(u, m); passoRefil(u); return; }
+      }
+      const z = zonaDaCaca(u);
+      if (z) { u.target = null; irParaCaca(u, z); return; }
+    }
+    u.target = null; u.path = null; u.goal = null; setState(u, ST.ADVANCE); return;
+  }
   if (G.AUTO.ataque.modo !== "desligado" || G.AUTO.ataque.revidar) { autoAtaque(u); return; }
   playerThink(u);
 }
+/* toque no chão, manche ou balcão de NPC seguram a viagem automática */
+export function pausarCaca(seg: number) { CACA.pausaAte = Math.max(CACA.pausaAte, W.simTime + seg); }
+export const cacaAtiva = () => cacaLigada() && W.simTime > CACA.pausaAte;
+/* o ponto atual da caça automática (para o HUD) */
+export const cacaAtual = () => (cacaAtiva() && G.ctrl && CACA.u === G.ctrl.id ? CACA.zona : null);
 export function avisoPz(u: Unit) {
   avisoDe(u, "Trava de PZ: a cidade abre em " + Math.ceil(pzRestante(u)) + " s", "#e0b93a");
 }
@@ -394,7 +593,10 @@ export function seguirLider(u: Unit, sq: Squad) {
   if (compraDoGrupo(u, sq)) return;
   if (dist(u.x, u.y, L.x, L.y) > LIDER_LONGE && !(u.w && (u.w.reencontro || 0) > W.simTime)) { worldThink(u, sq); return; }
   perceber(u, sq);
-  const alvo = L.target && !L.target.dead && podeAtacarManual(u, L.target) ? L.target : null;
+  let alvo = L.target && !L.target.dead && podeAtacarManual(u, L.target) ? L.target : null;
+  /* o alvo do líder está longe e alguém já bate em mim: esse primeiro */
+  if (alvo && dist(u.x, u.y, alvo.x, alvo.y) > u.K.range * 1.05) { const a = atacanteEm(u); if (a && podeAtacarManual(u, a)) alvo = a; }
+  else if (!alvo) { const a = atacanteEm(u); if (a && a.beast && podeAtacarManual(u, a)) alvo = a; }
   u.alvoManual = alvo; u.target = alvo;
   if (alvo) {
     autoEspecial(u);
@@ -443,6 +645,8 @@ export function alvoMaisProximo(u: Unit) {
   for (let i = 0; i < m; i++) lista.push(QBUF[i]);
   for (const e of lista) {
     if (!podeAtacarManual(u, e) || !losU(u, e)) continue;
+    /* PvP desligado: o botão Atacar nunca escolhe personagem */
+    if (!e.beast && !pvpLigado()) continue;
     if (filtra && !valeAuto(u, e)) continue;
     if (e.beast && !e.K.aggro && !odeia(e, u)) continue;
     const d2 = dist2(u.x, u.y, e.x, e.y);

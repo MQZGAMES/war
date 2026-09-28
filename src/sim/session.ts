@@ -8,7 +8,7 @@ import { avisoDe, fx, FX } from "./fx";
 import { buildGrid, buildMap, construirCidade, emPZ, ensureConnected, initPath, nearestFree, refreshAlive } from "./map";
 import { clamp, reseed, rnd, rr } from "./rng";
 import { G, W, hooks } from "./state";
-import { pontoDoPlano, pontoProporcional, recalcular } from "./stats";
+import { pontoDoPlano, pontoProporcional, recalcular, temProporcao } from "./stats";
 import type { Unit } from "./types";
 import { corGuilda, corLivre, makeUnit, paleta, resetNames } from "./unit";
 import { criarZonas, iniciaMundoUnit, novaParty, povoarZonas, reajustarFauna, sqBase } from "./world";
@@ -207,9 +207,11 @@ export function largar() {
     u.ordem = null; u.target = null; u.alvoManual = null; u.encomenda = null; u.npcAlvo = null; u.refil = null;
     u.goalKey = ""; u.path = null; u.think = 0;
     if (u.w) u.w.t = 0;
-    if (u.manual) {
-      u.proporcao = Object.assign({}, u.attr);
-      while (u.pts > 0) { u.attr[pontoProporcional(u)]++; u.pts--; }
+    /* ao largar, os pontos livres seguem a proporção de quem jogou (ou,
+       sem nada posto à mão, o plano) */
+    if (u.manual && !temProporcao(u)) u.proporcao = Object.assign({}, u.attr);
+    if (u.pts > 0) {
+      while (u.pts > 0) { u.attr[temProporcao(u) ? pontoProporcional(u) : pontoDoPlano(u)]++; u.pts--; }
       recalcular(u, true);
     }
   }

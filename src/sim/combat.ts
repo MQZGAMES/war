@@ -10,7 +10,8 @@ import { agrediu, esquecerAmarelas, marcar, morteInjusta, travaMorte } from "./p
 import { aliado, anotarRancor, esquecerMorto, inimigo, KS_JANELA, odiar, registrarKs } from "./relations";
 import { clamp, dist, ri, rnd, rr } from "./rng";
 import { G, W, type Meteoro, type Projetil } from "./state";
-import { pontoDoPlano, pontoProporcional, recalcular } from "./stats";
+import { notarMorte } from "./estilo";
+import { pontoDoPlano, pontoProporcional, recalcular, temProporcao } from "./stats";
 import type { Item, Unit } from "./types";
 import { BASES, RARO_COR, RARO_NOME, SLOTS } from "./itemsData";
 
@@ -87,8 +88,11 @@ export function gainXp(u: Unit, v: number) {
   const need = xpNeed(u.lvl);
   if (u.xp < need) return;
   u.xp -= need; u.lvl++; u.pts++;
-  if (!u.manual) { u.attr[pontoDoPlano(u)]++; u.pts--; }
-  else if (u !== G.ctrl) { u.attr[pontoProporcional(u)]++; u.pts--; }
+  /* autobuild: na proporção do que foi posto à mão ou, sem nada à mão,
+     pelo plano; no comando, só com "Distribuir sozinho" ligado */
+  if (u !== G.ctrl || G.AUTO.build) {
+    u.attr[temProporcao(u) ? pontoProporcional(u) : pontoDoPlano(u)]++; u.pts--;
+  }
   recalcular(u, true);
   fx({ t: "levelup", u });
   if (u === G.ctrl) ui.banner("Nível " + u.lvl, u.pts ? u.pts + " ponto" + (u.pts > 1 ? "s" : "") + " para distribuir" : "", "nivel");
@@ -162,7 +166,7 @@ export function kill(t: Unit, src: Unit | null) {
   if (t.beast) { if (t.zona) t.zona.pop--; if (t.bando) t.bando.pop--; t.remover = true; t.reborn = 0; }
   else {
     t.reborn = W.simTime + WORLD_REBORN; t.refil = null;
-    if (t.w) t.w.azar = (t.w.azar || 0) + 1;
+    if (t.w) { t.w.azar = (t.w.azar || 0) + 1; notarMorte(t); }
     if (src && !src.beast) {
       src.pkKills = (src.pkKills || 0) + 1;
       anotarRancor(t, src);

@@ -17,8 +17,8 @@ import { tela, volta, irPara, atualizar, tick, aviso, retrato } from "./store";
 import { Ico } from "./icons";
 import { DoisToques, Lin, Passo, Seg, SimNao, clique, recusa } from "./comp";
 import { retratoDe } from "../render/portrait";
-import { conta, metaNuvem, nuvemAtiva } from "../net/nuvem";
-import { abrirDaNuvem, dataNuvem } from "./conta";
+import { conta, enviadoEm, metaNuvem, nuvemAtiva, nuvemOcupada } from "../net/nuvem";
+import { abrirDaNuvem, dataNuvem, haQuanto, salvarNaNuvem } from "./conta";
 
 /* ---------- título ---------- */
 export function Titulo() {
@@ -64,7 +64,7 @@ export function Titulo() {
             <button class="go sec" onClick={() => { clique(); irPara("mundo"); }}><Ico n="mundo" s={20} />Regras</button>
             <button class="go sec" onClick={() => { clique(); irPara("ajustes"); }}><Ico n="engrenagem" s={20} />Ajustes</button>
           </div>
-          {nuvemAtiva && <button class="go sec" onClick={() => { clique(); irPara("conta"); }}><Ico n="nuvem" s={20} />{conta.value ? "Nuvem · " + conta.value.email : "Entrar para salvar na nuvem"}</button>}
+          {nuvemAtiva && <button class="go sec" onClick={() => { clique(); irPara("conta"); }}><Ico n="nuvem" s={20} />{conta.value ? "Nuvem · " + conta.value.usuario : "Entrar para salvar na nuvem"}</button>}
           <p class="rodape">v1.0 · toque, teclado e mouse · funciona offline</p>
         </div>
       </div>
@@ -149,12 +149,14 @@ export function Heroi() {
 /* ---------- como jogar ---------- */
 const AJ: [string, string, preact.ComponentChildren][] = [
   ["camLivre", "Mover", <>Arraste o polegar em qualquer lugar do mapa: o manche nasce onde o dedo cai. No teclado, <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> ou setas. Tocar no chão manda o personagem caminhar até lá.</>],
-  ["espada", "Atacar", <>Toque num inimigo para travar o alvo, ou use o botão grande, que mira no mais próximo. Tocar de novo solta. Sem ordem, o auto ataque escolhe sozinho conforme o modo (botão da pata).</>],
+  ["espada", "Atacar", <>Toque num inimigo para travar o alvo, ou use o botão grande, que mira no mais próximo. Tocar de novo solta. Sem ordem, o auto ataque escolhe sozinho conforme o modo (botão da pata) e vai sozinho para a caça que mais rende.</>],
+  ["paz", "PvP", <>O botão PvP ao lado da pata diz se personagens podem ser feridos. Desligado, nem a magia de área acerta outro jogador. Justiceiro, Maldoso e Todos ligam o PvP; tocar num personagem ou revidar um ataque também liga. Desligar volta o auto ataque para Criaturas.</>],
   ["magia", "Magias e poções", <>Quatro casas de magia ao lado do Atacar (troque na aba Magias). Magia de área pede um toque no chão; com alvo marcado, já mira nele. Os frascos bebem poções; a aba Cura deixa isso automático. Teclas <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd>, <kbd>Q</kbd><kbd>E</kbd>, <kbd>F</kbd>.</>],
   ["cidade", "Cidade e zona de proteção", <>Todo o calçamento é PZ: ninguém ataca nem é atacado, e criatura não entra. Feiticeiro vende poções, Comerciante compra e vende itens de +1 a +10, Banqueiro guarda ouro e 50 itens. O minimapa leva até lá com um toque.</>],
   ["caveira", "Caveiras e trava", <>Agredir quem não te atacou dá caveira branca e tranca a cidade por 30 s; matar por agressão tranca 2 min. Três mortes injustas em uma hora trazem a caveira vermelha. Bater em criatura nunca trava.</>],
   ["coracao", "Morte", <>Perde 1 nível, a mochila inteira e o ouro fora do banco, com 10% de chance de perder um item vestido. Volta ao obelisco em 9 s. Deposite no Banqueiro antes de arriscar.</>],
-  ["mochila", "Automação", <>Na mochila: auto cura, auto refil (vai à cidade repor poções sozinho), auto equipar, modos de auto ataque, atributos por nível, equipe e ficha. O personagem se vira mesmo quando você só assiste.</>],
+  ["mochila", "Automação", <>Na mochila: auto cura, auto refil (repõe poções, vende o loot, compra equipamento e forja no Ferreiro), auto equipar, modos de auto ataque, atributos por nível (seguem a proporção que você pôs à mão), equipe e ficha. O personagem se vira mesmo quando você só assiste.</>],
+  ["nuvem", "Nuvem", <>Crie uma conta com usuário e senha em Nuvem. A partida sobe sozinha a cada 5 minutos de jogo e ao fechar o app; no menu, Salvar na nuvem sobe na hora. Em outro aparelho, entre com a mesma conta e toque em Continuar.</>],
   ["equipe", "Equipe", <>Na aba Equipe, convide quem estiver sem grupo. Liderar faz o grupo seguir você: cavaleiros à frente, o resto atrás, todos no seu alvo.</>],
   ["olho", "Câmera", <>Pinça ou roda do mouse dá zoom. Com a câmera em Livre, o dedo arrasta a vista; botão direito do mouse também. <kbd>Esc</kbd> ou <kbd>Espaço</kbd> abre o menu e pausa. O dia vira noite a cada nove minutos.</>],
 ];
@@ -194,7 +196,7 @@ export function Menu() {
           <div class="secao">Salvar e carregar</div>
           <div class="grade2">
             <button class="cb ouro" onClick={(e) => {
-              const ok = salvarLocalMundo();
+              const ok = salvarLocalMundo("nao");
               if (!ok) recusa(e.currentTarget as HTMLElement); else clique();
               setMsg(ok ? "Partida guardada neste aparelho. Ela volta em “Continuar”, na tela inicial." : G.ctrl ? "Não deu para guardar aqui (sem espaço ou armazenamento bloqueado). Use Salvar arquivo." : "Assuma um herói antes de guardar a partida.");
             }}><Ico n="salvar" s={20} /><b>Guardar no aparelho</b><small>volta em “Continuar”</small></button>
@@ -206,7 +208,13 @@ export function Menu() {
             }}><Ico n="baixar" s={20} /><b>Salvar arquivo</b><small>baixa um .json</small></button>
             <DoisToques cls="cb" acao={() => { if (arq.current) { arq.current.value = ""; arq.current.click(); } }} filhos={<><Ico n="carregar" s={20} /><b>Carregar arquivo</b><small>dois toques</small></>} armado={<><b>Toque de novo</b><small>substitui o mundo atual</small></>} />
             <DoisToques cls="cb" acao={() => { apagarLocal(MUNDO_CHAVE); setMsg("Partida guardada apagada deste aparelho."); }} filhos={<><Ico n="fechar" s={20} /><b>Apagar do aparelho</b><small>dois toques</small></>} armado={<><b>Toque de novo</b><small>apaga a partida guardada</small></>} />
-            {nuvemAtiva && <button class="cb cheio" onClick={() => { clique(); irPara("conta"); }}><Ico n="nuvem" s={20} /><b>Nuvem</b><small>{conta.value ? conta.value.email + (metaNuvem.value ? " · enviada " + dataNuvem(metaNuvem.value.quando) : "") : "entre para levar a partida a outro aparelho"}</small></button>}
+            {nuvemAtiva && conta.value && <button class="cb ouro" disabled={nuvemOcupada.value} onClick={(e) => {
+              const el = e.currentTarget as HTMLElement;
+              if (!G.ctrl) { recusa(el); setMsg("Assuma um herói antes de salvar na nuvem."); return; }
+              clique(); setMsg("Enviando para a nuvem…");
+              salvarNaNuvem().then(() => setMsg("Partida salva na nuvem (" + conta.value!.usuario + ").")).catch((err) => { recusa(el); setMsg("A nuvem não confirmou: " + (err as Error).message + "."); });
+            }}><Ico n="nuvem" s={20} /><b>Salvar na nuvem</b><small>{nuvemOcupada.value ? "enviando…" : enviadoEm.value ? "última: " + haQuanto(enviadoEm.value) : "sozinha a cada 5 min"}</small></button>}
+            {nuvemAtiva && <button class={"cb" + (conta.value ? "" : " cheio")} onClick={() => { clique(); irPara("conta"); }}><Ico n="nuvem" s={20} /><b>{conta.value ? "Conta" : "Nuvem"}</b><small>{conta.value ? conta.value.usuario + (metaNuvem.value ? " · " + dataNuvem(metaNuvem.value.quando) : "") : "entre para levar a partida a outro aparelho"}</small></button>}
           </div>
           <input ref={arq} type="file" accept=".json,application/json" hidden onChange={() => {
             const f = arq.current && arq.current.files && arq.current.files[0];

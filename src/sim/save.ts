@@ -3,7 +3,8 @@
    [SYSTEM: PREFS] — o mesmo formato .json da v54 ("mesa-de-guerra"):
    fichas e mundos salvos na versão antiga abrem aqui.
    ================================================================ */
-import { ATALHOS, NUM_SLOTS, KINDS, sexoDoNome, PERFIL_NOME, PLANOS, POCAO, PZ_LUTA, SPELLS, WORLD_REBORN, type AtqModo, type SpellKey, type VocKey } from "./data";
+import { ATALHOS, NUM_SLOTS, KINDS, MODO_PVP, sexoDoNome, PERFIL_NOME, PLANOS, POCAO, PZ_LUTA, SPELLS, WORLD_REBORN, type AtqModo, type SpellKey, type VocKey } from "./data";
+import { ESTILOS, type Estilo } from "./estilo";
 import { darItem, ehPocao, novoItem, pocaoItem, recontar, servePara } from "./items";
 import { BASES, COFRE_N, MOCHILA_N, SLOTS } from "./itemsData";
 import { emPZ, nearestFree } from "./map";
@@ -55,10 +56,18 @@ export function aplicarAuto(a: Partial<typeof G.AUTO>) {
   if (a.refil) Object.assign(G.AUTO.refil, a.refil);
   if (a.equip !== undefined) G.AUTO.equip = a.equip ? 1 : 0;
   if (a.agrupar !== undefined) G.AUTO.agrupar = a.agrupar ? 1 : 0;
-  if (!PERFIL_NOME[G.AUTO.ataque.modo]) G.AUTO.ataque.modo = "criaturas";
+  if (a.build !== undefined) G.AUTO.build = a.build ? 1 : 0;
+  const A = G.AUTO.ataque, R = G.AUTO.refil;
+  if (!PERFIL_NOME[A.modo]) A.modo = "criaturas";
+  /* preferências de antes do botão de PvP: o modo decide */
+  if (a.ataque && a.ataque.pvp === undefined) A.pvp = MODO_PVP[A.modo];
+  if (MODO_PVP[A.modo]) A.pvp = 1;
+  A.pvp = A.pvp ? 1 : 0; A.cacar = A.cacar === undefined ? 1 : A.cacar ? 1 : 0;
+  R.forjar = R.forjar === undefined ? 1 : R.forjar ? 1 : 0;
+  R.forjaAte = clamp((R.forjaAte | 0) || 6, 2, 10);
 }
 export function salvarPref() {
-  PREF.auto = { cura: { ...G.AUTO.cura }, ataque: { ...G.AUTO.ataque }, refil: { ...G.AUTO.refil }, equip: G.AUTO.equip, lider: 0, agrupar: G.AUTO.agrupar };
+  PREF.auto = { cura: { ...G.AUTO.cura }, ataque: { ...G.AUTO.ataque }, refil: { ...G.AUTO.refil }, equip: G.AUTO.equip, lider: 0, agrupar: G.AUTO.agrupar, build: G.AUTO.build };
   gravarLocal(PREF_CHAVE, PREF);
 }
 
@@ -69,7 +78,7 @@ export function fichaDe(u: Unit) {
   return {
     jogo: "mesa-de-guerra", ficha: FICHA_V, quando: new Date().toISOString(),
     nome: u.name, vocacao: u.kind, cor: u.cor.h, sexo: u.sexo, pele: u.pele, cabelo: u.cabelo,
-    lvl: u.lvl, xp: u.xp, pts: u.pts, manual: !!u.manual, proporcao: u.proporcao,
+    lvl: u.lvl, xp: u.xp, pts: u.pts, manual: !!u.manual, proporcao: u.proporcao, seguiu: u.seguiu,
     attr: { ...u.attr }, plano: u.plano ? u.plano.n : null,
     eqp, mochila: u.mochila.slice(), cofre: u.cofre.slice(), ouro: u.ouro | 0, banco: u.banco | 0,
     slots: (u.slots || atalhosPadrao(u.kind as VocKey)).slice(), kills: u.kills | 0, pkKills: u.pkKills | 0,
@@ -102,7 +111,14 @@ export function aplicarFicha(u: Unit, f: any) {
   u.manual = !!f.manual;
   u.attr = { str: 0, dex: 0, def: 0, mag: 0, hp: 0, mp: 0 };
   if (f.attr) for (const k in u.attr) u.attr[k as keyof typeof u.attr] = Math.max(0, f.attr[k] | 0);
-  u.proporcao = f.proporcao && typeof f.proporcao === "object" ? Object.assign({ str: 0, dex: 0, def: 0, mag: 0, hp: 0, mp: 0 }, f.proporcao) : null;
+  const attrDe = (o: any) => {
+    if (!o || typeof o !== "object") return null;
+    const r = { str: 0, dex: 0, def: 0, mag: 0, hp: 0, mp: 0 };
+    for (const k in r) r[k as keyof typeof r] = Math.max(0, +o[k] || 0);
+    return r;
+  };
+  u.proporcao = attrDe(f.proporcao);
+  u.seguiu = attrDe(f.seguiu);
   u.plano = PLANOS[kind].find((p) => p.n === f.plano) || sorteiaPlano(kind);
   if (W.worldLivre && typeof f.cor === "number") u.cor = corPorMatiz(f.cor);
   for (const s of SLOTS) {
@@ -150,7 +166,7 @@ export function mundoDe() {
     f.hp = Math.round(u.hp); f.mp = Math.round(u.mp);
     f.morto = u.dead; f.volta = u.dead ? Math.max(1, Math.ceil(u.reborn - W.simTime)) : 0;
     const w = u.w!;
-    f.w = { perfil: w.perfil, pk: w.pk, social: w.social, ousadia: w.ousadia, ganancia: w.ganancia };
+    f.w = { perfil: w.perfil, pk: w.pk, social: w.social, ousadia: w.ousadia, ganancia: w.ganancia, estilo: w.estilo };
     jogadores.push(f);
   }
   const grupos: any[] = [];
@@ -162,7 +178,7 @@ export function mundoDe() {
     setup: { livre: W.worldLivre, guildas: W.guildasN, tamanho: W.worldSize, monstros: W.worldBeastCap },
     guerra: W.guerra.map((l) => l.map((v) => Math.max(0, Math.round(v - W.simTime)))),
     comando: G.ctrl ? G.ctrl.id : 0,
-    auto: { cura: { ...G.AUTO.cura }, ataque: { ...G.AUTO.ataque }, refil: { ...G.AUTO.refil }, equip: G.AUTO.equip, lider: G.AUTO.lider, agrupar: G.AUTO.agrupar },
+    auto: { cura: { ...G.AUTO.cura }, ataque: { ...G.AUTO.ataque }, refil: { ...G.AUTO.refil }, equip: G.AUTO.equip, lider: G.AUTO.lider, agrupar: G.AUTO.agrupar, build: G.AUTO.build },
     jogadores, grupos,
     mercado: MERCADO.ofertas.map((o) => ({ item: o.item, preco: o.preco, vendedor: o.vendedor ? o.vendedor.id : 0, nome: o.nome, resta: Math.max(1, Math.round(o.ate - W.simTime)) })),
     local: 0, heroi: "", nivel: 0,
@@ -195,6 +211,7 @@ export function carregarMundo(m: any) {
     if (f.w && u.w) {
       u.w.perfil = PERFIL_NOME[f.w.perfil as AtqModo] && f.w.perfil !== "desligado" ? f.w.perfil : "criaturas";
       for (const k of ["pk", "social", "ousadia", "ganancia"] as const) if (typeof f.w[k] === "number") u.w[k] = f.w[k];
+      if (ESTILOS[f.w.estilo as Estilo]) u.w.estilo = f.w.estilo;
     }
     u.hp = clamp(+f.hp || u.maxHp, 1, u.maxHp); u.mp = clamp(+f.mp || 0, 0, u.maxMp);
     if (f.morto) { u.dead = true; u.hp = 0; u.reborn = W.simTime + clamp(+f.volta || 3, 1, WORLD_REBORN); }
@@ -234,13 +251,15 @@ export function carregarMundo(m: any) {
   return porId.size;
 }
 /* a nuvem (net/nuvem.ts) se pendura aqui sem a simulação depender dela */
-export const ganchoSave: { aoSalvar: ((m: ReturnType<typeof mundoDe>, forcar: boolean) => void) | null } = { aoSalvar: null };
-export function salvarLocalMundo(forcar = false) {
+export type ModoNuvem = "auto" | "sair" | "nao";
+export const ganchoSave: { aoSalvar: ((m: ReturnType<typeof mundoDe>, modo: "auto" | "sair") => void) | null } = { aoSalvar: null };
+/* `nuvem`: "auto" sobe a cada 5 min, "sair" sobe ao fechar o app, "nao" só guarda aqui */
+export function salvarLocalMundo(nuvem: ModoNuvem = "auto") {
   if (!G.running || !G.ctrl) return false;
   try {
     const m = mundoDe();
     m.local = 1; m.heroi = G.ctrl.name; m.nivel = G.ctrl.lvl;
-    ganchoSave.aoSalvar?.(m, forcar);
+    if (nuvem !== "nao") ganchoSave.aoSalvar?.(m, nuvem);
     const s = JSON.stringify(m);
     if (s.length > 4e6) return false;
     localStorage.setItem(MUNDO_CHAVE, s);
