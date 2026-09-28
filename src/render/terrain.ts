@@ -102,7 +102,7 @@ export function construirTerreno(): THREE.Group {
         if (d < t.w + .6) cc.lerp(TRILHA, Math.max(0, Math.min(1, (t.w + .6 - d) / .8)) * .8);
       }
       /* sombra de copa: chão mais escuro em volta das árvores */
-      if (solid[i] && W.blockLOS[i]) cc.multiplyScalar(.78);
+      if (W.tronco[i]) cc.multiplyScalar(.78);
     }
     tileCor[i] = cc;
   }

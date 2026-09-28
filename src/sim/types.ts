@@ -92,4 +92,6 @@ export interface Unit {
   _imp: number;
   /* visual: último golpe recebido (direção do tranco) e cast em curso */
   hitX: number; hitY: number; castT: number; castK: string;
+  /* veneno da flecha: dano por segundo até `venAte` */
+  venDps: number; venAte: number; venTick: number; venSrc: Unit | null;
 }

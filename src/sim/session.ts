@@ -15,8 +15,11 @@ import { criarZonas, iniciaMundoUnit, novaParty, povoarZonas, sqBase } from "./w
 import { atalhosPadrao } from "./spells";
 
 export type Cfg = Record<VocKey, number>;
+/* Mega: o maior mapa que ainda roda liso no celular (grama e árvores em
+   blocos recortados pela câmera; a simulação pesa pelos bichos, não pelo chão) */
+export const TAMANHO_MEGA = 192;
 export const SETUP = {
-  livre: true, guildas: 2, tamanho: 72, monstros: 220,
+  livre: true, guildas: 2, tamanho: 128, monstros: 120,
   cfgLivre: { knight: 4, archer: 4, mage: 4, druid: 4 } as Cfg,
   cfgGuilda: [0, 1, 2, 3].map(() => ({ knight: 1, archer: 1, mage: 1, druid: 1 })) as Cfg[],
   sujo: false,
@@ -47,7 +50,7 @@ export function prepararMundo(seed: number) {
   G.sel = null; G.ctrl = null; G.mirandoSlot = -1; SETUP.sujo = false;
   W.units = []; W.squads = []; W.parties = []; W.partyId = 1; W.convitesPend = [];
   FX.length = 0;
-  W.N = clamp(W.worldSize, 48, 180);
+  W.N = clamp(W.worldSize, 48, TAMANHO_MEGA);
   buildMap();
   construirCidade(paleta);
   initPath();

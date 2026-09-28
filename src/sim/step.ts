@@ -4,8 +4,8 @@
    ================================================================ */
 import { PARAL_MULT, ST, VIGOR_MULT } from "./data";
 import { fx, ui } from "./fx";
-import { beastAttack, beastBaque, beastInvestida, golpe, shoot, updateMeteors, updateOndas, updateProjectiles } from "./combat";
-import { blockedPt, buildGrid, cellsAround, emPZ, findPath, los, losU, losU2, nearestFree, refreshAlive } from "./map";
+import { beastAttack, beastBaque, beastInvestida, golpe, hit, shoot, updateMeteors, updateOndas, updateProjectiles } from "./combat";
+import { blockedPt, buildGrid, cellsAround, desviarTroncos, emPZ, empurraTroncos, findPath, los, losU, nearestFree, refreshAlive, retaLivre } from "./map";
 import { caveiraPasso, pzAtiva } from "./pk";
 import { clamp, dist, dist2, rnd, rr } from "./rng";
 import { G, W, hooks } from "./state";
@@ -20,10 +20,15 @@ import { CID_R } from "./map";
 
 export const DT = 1 / 60;
 let pathBudget = 0;
+/* criatura, e quem tem trava fora da cidade, não pisam no calçamento:
+   a rota já desvia da PZ em vez de esbarrar nela */
+export const barrado = (u: Unit) => !u.pz && (u.beast || pzAtiva(u));
+const EMP = { x: 0, y: 0 };
+let quadro = 0;
 export function novoQuadro() { pathBudget = 8; }
 
 export function step() {
-  W.simTime += DT;
+  W.simTime += DT; quadro++;
   refreshAlive();
   buildGrid();
   worldStep();
@@ -50,6 +55,16 @@ export function step() {
       while (df < -Math.PI) df += Math.PI * 2;
       u.fa += clamp(df, -7 * DT, 7 * DT);
       u.dirx = Math.cos(u.fa); u.diry = Math.sin(u.fa);
+    }
+    if (u.venAte > 0) {
+      if (simTime >= u.venTick) {
+        u.venTick = simTime + 1;
+        const src = u.venSrc && !u.venSrc.dead ? u.venSrc : null;
+        fx({ t: "bits", x: u.x, y: u.y, c: "#7fe05a", n: 6, spd: .8, h: .6 });
+        hit(src, u, u.venDps, true);
+        if (u.dead) continue;
+      }
+      if (simTime >= u.venAte) { u.venAte = 0; u.venSrc = null; }
     }
     if (u.slow > 0) u.slow -= DT;
     if (u.pressa > 0) u.pressa -= DT;
@@ -109,15 +124,20 @@ export function step() {
       if (u.refil) pausaRefil(u, "volta quando você parar");
       u.refilEspera = simTime + 1.5;
     } else if (u.st !== ST.ENGAGE && u.goal) {
+      const semPz = barrado(u);
       if (u.repath <= 0) {
-        if (losU2(u.x, u.y, u.goal.x, u.goal.y)) { u.path = null; u.pi = 0; u.repath = .35 + rnd() * .25; }
+        if (retaLivre(u.x, u.y, u.goal.x, u.goal.y, u.K.r, semPz)) { u.path = null; u.pi = 0; u.repath = .35 + rnd() * .25; }
         else if (pathBudget > 0) {
           u.repath = .55 + rnd() * .5; pathBudget--;
-          u.path = findPath(u.x, u.y, u.goal.x, u.goal.y); u.pi = 0;
+          u.path = findPath(u.x, u.y, u.goal.x, u.goal.y, semPz); u.pi = 0;
         }
       }
       if (u.path && u.pi < u.path.length) {
         while (u.pi < u.path.length - 1 && dist(u.x, u.y, u.path[u.pi].x, u.path[u.pi].y) < .45) u.pi++;
+        /* corta caminho: mira o ponto mais adiante que já dá para ver */
+        if (((u.id + quadro) & 7) === 0)
+          for (let k = Math.min(u.path.length - 1, u.pi + 4); k > u.pi; k--)
+            if (retaLivre(u.x, u.y, u.path[k].x, u.path[k].y, u.K.r, semPz)) { u.pi = k; break; }
         const p = u.path[u.pi];
         const l = dist(u.x, u.y, p.x, p.y);
         if (l < .42) u.pi++;
@@ -128,18 +148,28 @@ export function step() {
       }
     }
     // separação
+    /* separação: cada corpo pede o espaço do próprio porte; o menor
+       cede mais. O empurrão é suave, sem disparar a corrida */
     let sx = 0, sy = 0;
+    const querAndar = Math.hypot(dx, dy) > .02;
     {
-      const rSep = .93, rSep2 = rSep * rSep;
+      const ru = u.K.r;
       cellsAround(u, (o) => {
         if (o === u) return;
+        const rS = (ru + o.K.r) * 1.08 + .14;
         const d2 = dist2(u.x, u.y, o.x, o.y);
-        if (d2 > rSep2 || d2 < 1e-5) return;
-        const d = Math.sqrt(d2);
-        sx += (u.x - o.x) / d * (rSep - d); sy += (u.y - o.y) / d * (rSep - d);
+        if (d2 > rS * rS) return;
+        let d = Math.sqrt(d2), ex = u.x - o.x, ey = u.y - o.y;
+        if (d < 1e-3) { const a = (u.id * 2.39996) % 6.283; ex = Math.cos(a); ey = Math.sin(a); d = 1; }
+        const f = (rS - Math.min(d, rS)) / rS * (o.K.r / (ru + o.K.r)) * 2;
+        sx += ex / d * f; sy += ey / d * f;
       });
+      /* troncos: desviar de lado antes de encostar; de perto, afastar */
+      if (querAndar) { desviarTroncos(u, u.K.r, dx, dy, EMP); dx += EMP.x; dy += EMP.y; }
+      empurraTroncos(u.x, u.y, u.K.r + .15, EMP);
+      sx += EMP.x * .8; sy += EMP.y * .8;
     }
-    dx += sx * 2.1; dy += sy * 2.1;
+    dx += sx * 1.8; dy += sy * 1.8;
     let l = Math.hypot(dx, dy);
     if (l > .02 && u.desvio > 0) {
       u.desvio -= DT;
@@ -148,10 +178,11 @@ export function step() {
       dx = nx; dy = ny; l = Math.hypot(dx, dy);
     }
     if (l > .02) {
-      const sp = u.K.spd * u.velo * (u.paral > 0 ? PARAL_MULT : u.slow > 0 ? .5 : 1) * (u.pressa > 0 ? VIGOR_MULT : 1) * DT;
+      const ritmo = querAndar ? 1 : Math.min(1, l * 1.6);
+      const sp = u.K.spd * u.velo * ritmo * (u.paral > 0 ? PARAL_MULT : u.slow > 0 ? .5 : 1) * (u.pressa > 0 ? VIGOR_MULT : 1) * DT;
       moveBy(u, dx / l * sp, dy / l * sp);
-      u.bob += sp * 11; u.moving = 1; u.moveA = Math.atan2(dy, dx);
-      u.travT += DT;
+      if (querAndar || ritmo > .35) { u.bob += sp * 11; u.moving = 1; u.moveA = Math.atan2(dy, dx); }
+      if (querAndar) u.travT += DT;
       if (u.travT >= TRAVA_TESTE) {
         const andou = dist(u.x, u.y, u.travX, u.travY);
         if (andou < TRAVA_MIN) {
@@ -225,8 +256,14 @@ export function moveBy(u: Unit, mx: number, my: number) {
   const c1 = barra ? pzCantos(u.x, u.y, r) : 0;
   const ny = u.y + my;
   if (!blockedPt(u.x, ny, r)) { if (barra && pzCantos(u.x, ny, r) > c1) barrou(u); else u.y = ny; }
+  empurraTroncos(u.x, u.y, r, EMP);
+  if (EMP.x || EMP.y) {
+    const qx = u.x + EMP.x * .35, qy = u.y + EMP.y * .35;
+    if (!blockedPt(qx, qy, r) && !(barra && pzCantos(qx, qy, r) > pzCantos(u.x, u.y, r))) { u.x = qx; u.y = qy; }
+  }
   u.x = clamp(u.x, r, W.N - r); u.y = clamp(u.y, r, W.N - r);
-  if (!u.beast) u.pz = emPZ(u.x, u.y);
+  /* quem está barrado não vira "dentro da cidade" por uma quina do calçamento */
+  if (!u.beast) u.pz = emPZ(u.x, u.y) && (u.pz || !barra);
 }
 function barrou(u: Unit) {
   if (u === G.ctrl && W.simTime > avisoPzT) { avisoPzT = W.simTime + 2.5; avisoPz(u); }
@@ -256,7 +293,7 @@ export function reviveUnit(u: Unit) {
   }
   u.xp = 0;
   recalcular(u);
-  u.pressa = 0; u.paral = 0; u.hp = u.maxHp; u.mp = u.maxMp;
+  u.pressa = 0; u.paral = 0; u.venAte = 0; u.venSrc = null; u.hp = u.maxHp; u.mp = u.maxMp;
   u.fa = Math.atan2(W.cidade.y - u.y, W.cidade.x - u.x) + Math.PI; u.moveA = u.fa;
   if (u === G.ctrl) { hooks.setCam(true); hooks.centrarEm(u); }
   if (u.w) {

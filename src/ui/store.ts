@@ -155,7 +155,7 @@ export function ligarInterface() {
   entrada.acoes = {
     aoTocarNpc: (id) => abrirNpc(id),
     atalho: (k) => {
-      if (k === "1" || k === "2" || k === "3") usarSlot(+k - 1);
+      if (k === "1" || k === "2" || k === "3" || k === "4") usarSlot(+k - 1);
       else if (k === "q") beber("hp");
       else if (k === "e") beber("mp");
       else if (k === "f" || k === "tab") atacar();

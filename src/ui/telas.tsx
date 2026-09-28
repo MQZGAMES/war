@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { G, W } from "../sim/state";
 import { FIRST_NAMES, KINDS, TEAMS, VOCS, VOC_DESC, VOC_MATIZ, type VocKey } from "../sim/data";
-import { SETUP, criarHeroi, largar, somaCfg, distribuirTotal, sortearVocacoes, startWorld, type Cfg } from "../sim/session";
+import { SETUP, TAMANHO_MEGA, criarHeroi, largar, somaCfg, distribuirTotal, sortearVocacoes, startWorld, type Cfg } from "../sim/session";
 import { PREF, salvarPref, salvarLocalMundo, temMundoLocal, apagarLocal, MUNDO_CHAVE, carregarMundo, mundoDe, baixarJson } from "../sim/save";
 import { corPorMatiz } from "../sim/unit";
 import { clamp } from "../sim/rng";
@@ -141,7 +141,7 @@ export function Heroi() {
 const AJ: [string, string, preact.ComponentChildren][] = [
   ["camLivre", "Mover", <>Arraste o polegar em qualquer lugar do mapa: o manche nasce onde o dedo cai. No teclado, <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> ou setas. Tocar no chão manda o personagem caminhar até lá.</>],
   ["espada", "Atacar", <>Toque num inimigo para travar o alvo, ou use o botão grande, que mira no mais próximo. Tocar de novo solta. Sem ordem, o auto ataque escolhe sozinho conforme o modo (botão da pata).</>],
-  ["magia", "Magias e poções", <>Três casas de magia ao lado do Atacar (troque na aba Magias). Magia de área pede um toque no chão; com alvo marcado, já mira nele. Os frascos bebem poções; a aba Cura deixa isso automático. Teclas <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>, <kbd>Q</kbd><kbd>E</kbd>, <kbd>F</kbd>.</>],
+  ["magia", "Magias e poções", <>Quatro casas de magia ao lado do Atacar (troque na aba Magias). Magia de área pede um toque no chão; com alvo marcado, já mira nele. Os frascos bebem poções; a aba Cura deixa isso automático. Teclas <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd>, <kbd>Q</kbd><kbd>E</kbd>, <kbd>F</kbd>.</>],
   ["cidade", "Cidade e zona de proteção", <>Todo o calçamento é PZ: ninguém ataca nem é atacado, e criatura não entra. Feiticeiro vende poções, Comerciante compra e vende itens de +1 a +10, Banqueiro guarda ouro e 50 itens. O minimapa leva até lá com um toque.</>],
   ["caveira", "Caveiras e trava", <>Agredir quem não te atacou dá caveira branca e tranca a cidade por 30 s; matar por agressão tranca 2 min. Três mortes injustas em uma hora trazem a caveira vermelha. Bater em criatura nunca trava.</>],
   ["coracao", "Morte", <>Perde 1 nível, a mochila inteira e o ouro fora do banco, com 10% de chance de perder um item vestido. Volta ao obelisco em 9 s. Deposite no Banqueiro antes de arriscar.</>],
@@ -261,8 +261,8 @@ export function Mundo() {
           {Array.from({ length: SETUP.guildas }, (_, t) => <LinhaRoster key={t} c={SETUP.cfgGuilda[t]} nome={TEAMS[t].name} cor={TEAMS[t].c} teto={12} />)}
         </>}
         <button class="btn" style={{ width: "100%", marginTop: "6px" }} onClick={() => { clique(); sortearVocacoes(); suja(); }}><Ico n="dado" s={18} />Sortear vocações</button>
-        <Lin col rot="Tamanho do mundo"><Seg itens={[[56, "56²"], [72, "72²"], [96, "96²"], [128, "128²"]]} valor={SETUP.tamanho} aoEscolher={(v) => { SETUP.tamanho = v; suja(); }} /></Lin>
-        <Lin col rot="Monstros no mundo"><Seg itens={[[120, "Poucos"], [220, "Normal"], [340, "Muitos"]]} valor={SETUP.monstros} aoEscolher={(v) => { SETUP.monstros = v; suja(); }} /></Lin>
+        <Lin col rot="Tamanho do mundo" sub={SETUP.tamanho === TAMANHO_MEGA ? "Mega: " + TAMANHO_MEGA + "² ladrilhos, mais pontos de caça e viagens longas." : undefined}><Seg itens={[[72, "72²"], [96, "96²"], [128, "128²"], [TAMANHO_MEGA, "Mega"]]} valor={SETUP.tamanho} aoEscolher={(v) => { SETUP.tamanho = v; suja(); }} /></Lin>
+        <Lin col rot="Monstros no mundo" sub="Mesmo em Poucos, todas as 14 criaturas aparecem."><Seg itens={[[120, "Poucos"], [220, "Normal"], [340, "Muitos"]]} valor={SETUP.monstros} aoEscolher={(v) => { SETUP.monstros = v; suja(); }} /></Lin>
         <div style={{ height: "8px" }} />
         {G.ctrl
           ? <DoisToques cls="go" acao={gerar} filhos={SETUP.sujo ? "Aplicar e gerar mundo novo" : "Gerar mundo novo"} armado="Toque de novo: o mundo atual se perde" />

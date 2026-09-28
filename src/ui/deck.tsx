@@ -257,15 +257,15 @@ function PAtrib({ u }: { u: Unit }) {
     </>
   );
 }
-const ICO_M: Record<SpellKey, string> = { investida: "investida", triplo: "triplo", meteoro: "meteoro", trevas: "trevas", terremoto: "terremoto", nevasca: "nevasca", chuva: "chuva", cura: "cura", certeiro: "certeiro" };
+const ICO_M: Record<SpellKey, string> = { investida: "investida", triplo: "triplo", meteoro: "meteoro", trevas: "trevas", terremoto: "terremoto", nevasca: "nevasca", chuva: "chuva", cura: "cura", certeiro: "certeiro", bumerangue: "bumerangue", veneno: "veneno", bolaFogo: "bolaFogo", relampago: "relampago" };
 function PMagias({ u }: { u: Unit }) {
   void tick.value;
   const lista = magiasDe(u.kind as VocKey);
   if (!u.slots) return null;
   return (
     <>
-      <p class="dica" style={{ marginTop: 0 }}>Escolha o que vai em cada uma das três casas ao lado do Atacar. Magia de área pede um toque no chão; com alvo marcado, já mira nele.</p>
-      {[0, 1, 2].map((i) => (
+      <p class="dica" style={{ marginTop: 0 }}>Escolha o que vai em cada uma das quatro casas ao lado do Atacar. Magia de área pede um toque no chão; com alvo marcado, já mira nele.</p>
+      {[0, 1, 2, 3].map((i) => (
         <div key={i} class="lin col">
           <span class="rot">Casa {i + 1}</span>
           <div class="magiaOp">
@@ -374,7 +374,7 @@ function PFicha({ u }: { u: Unit }) {
       </Lin>
       <Lin col rot="Cor do personagem" sub={W.worldLivre ? "Toque para trocar a cor das roupas." : "Com guildas a cor vem do tom da guilda."}>
         <div class="cores">
-          {CORES_FICHA.map((p, i) => <button key={i} class={p.h === u.cor.h ? "on" : ""} style={{ background: p.c }} disabled={!W.worldLivre} aria-label={"Cor " + (i + 1)}
+          {CORES_FICHA.map((p, i) => <button key={i} class={p.h === u.cor.h ? "on" : ""} style={{ background: p.h >= 400 ? `linear-gradient(135deg, ${p.c} 52%, ${p.h === 400 ? p.lo : p.hi} 52%)` : p.c }} disabled={!W.worldLivre} aria-label={p.h === 400 ? "Branca com preto" : p.h === 401 ? "Preta com branco" : "Cor " + (i + 1)}
             onClick={() => { clique(); u.cor = CORES_FICHA[i]; retrato.value = retratoDe(u); atualizar(); }} />)}
         </div>
       </Lin>

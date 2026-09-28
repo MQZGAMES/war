@@ -7,7 +7,8 @@
      · com trava a cidade fecha e nenhum NPC atende.
    Caveiras: branca = a própria trava; vermelha = 3 mortes injustas em
    1 h de relógio real; amarela = quem ataca alguém de caveira sem ter
-   apanhado dele, visível só para a vítima.
+   apanhado dele, visível só para a vítima, enquanto a vítima estiver
+   travada (com a branca, ou com a vermelha e trava de PZ).
    ================================================================ */
 import { EXA, HORA_MS, PZ_LUTA, PZ_MORTE, REVIDE, VERMELHA_N } from "./data";
 import { avisoDe } from "./fx";
@@ -31,10 +32,13 @@ export function agrediu(a: Unit, b: Unit) {
   return t !== undefined && W.simTime - t < REVIDE;
 }
 
+/* A amarela vive enquanto a vítima que carrega a caveira continua
+   travada: branca é a própria trava; na vermelha, vale a trava de PZ.
+   Acabou a trava de quem foi atacado, o agressor perde a amarela. */
 export function amareloPara(v: Unit, a: Unit) {
   const m = v.amarela;
   if (!m || !m[a.id]) return false;
-  if (a.dead || v.dead || !pzAtiva(a)) { delete m[a.id]; return false; }
+  if (a.dead || v.dead || !v.skull || !pzAtiva(v)) { delete m[a.id]; return false; }
   return true;
 }
 export function esquecerAmarelas(u: Unit) {

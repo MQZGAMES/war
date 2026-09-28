@@ -4,7 +4,7 @@
    [SYSTEM: ALVO_TRAVADO] [SYSTEM: AUTO_REFIL] [SYSTEM: GRUPO_REFIL]
    [SYSTEM: LIDER] — mesma lógica da v54.
    ================================================================ */
-import { CHUVA_ALCANCE, CUSTO, MET_ALCANCE, SPELLS, ST, type SpellKey } from "./data";
+import { CHUVA_ALCANCE, CUSTO, MET_ALCANCE, NUM_SLOTS, SPELLS, ST, type SpellKey } from "./data";
 import { avisoDe, fx } from "./fx";
 import { comprarMelhorias, comprarPocoes, depositarOuro, ehPocao, guardarNoCofre, livres, mantem, saldo, semFrasco, venderItem, PRECO_POCAO } from "./items";
 import { dist, clamp, dist2 } from "./rng";
@@ -98,7 +98,7 @@ export function autoCuraPasso(u: Unit) {
 function autoEspecial(u: Unit) {
   if (!u.target || u.target.dead) return;
   const apertado = G.AUTO.cura.ligado && u.hp < u.maxHp * Math.min(.95, G.AUTO.cura.pct + .25);
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < NUM_SLOTS; i++) {
     const k = slotDe(u, i);
     if (k === "cura" || k === "chuva") continue;
     const m = magiaDe(u, k);

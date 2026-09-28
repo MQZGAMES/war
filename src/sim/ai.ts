@@ -5,13 +5,13 @@
    [SYSTEM: AI_UTILITY] cada ação pontua; a maior vence
    [SYSTEM: AI_BEAST] [SYSTEM: AI_ODIO] fera só caça quem bateu nela
    ================================================================ */
-import { AMEACA, CHUVA_ALCANCE, CHUVA_R, CUSTO, DWELL, HISTERESE, MARGEM, MEM_TTL, MET_ALCANCE, MET_QUEDA, MET_R, NEVASCA, POCAO, ST, STRAFE, TERREMOTO, UTIL, type Estado, type SpellKey } from "./data";
+import { AMEACA, BUMERANGUE, EXPLOSAO, CHUVA_ALCANCE, CHUVA_R, CUSTO, DWELL, HISTERESE, MARGEM, MEM_TTL, MET_ALCANCE, MET_QUEDA, MET_R, NEVASCA, POCAO, ST, STRAFE, TERREMOTO, UTIL, type Estado, type SpellKey } from "./data";
 import { fx } from "./fx";
 import { blockedPt, cellsAround, emPZ, los, losU, nearestFree, portaoAtual, portaoPara, QBUF, QBUF2, queryRadius, queryRadius2 } from "./map";
 import { pzAtiva } from "./pk";
 import { aliado, inimigo, odeia, PANICO_R } from "./relations";
 import { clamp, dist, dist2, rnd, rr } from "./rng";
-import { beberPocao, lancarCerteiro, lancarChuva, lancarCura, lancarInvestida, lancarMeteoro, lancarNevasca, lancarTerremoto, lancarTrevas, lancarTriplo, podeMagia } from "./spells";
+import { beberPocao, lancarBolaFogo, lancarBumerangue, lancarCerteiro, lancarChuva, lancarCura, lancarInvestida, lancarMeteoro, lancarNevasca, lancarRelampago, lancarTerremoto, lancarTrevas, lancarTriplo, lancarVeneno, podeMagia } from "./spells";
 import { W } from "./state";
 import { MAG_DANO } from "./data";
 import type { Pt, Squad, Unit } from "./types";
@@ -107,6 +107,13 @@ function ameaca(u: Unit, e: Unit, d: number) {
     case "isolado": s += sq ? Math.min(1, dist(e.x, e.y, sq.cx, sq.cy) / 12) * 1.1 : 0; break;
   }
   return s;
+}
+/* inimigos de u em volta de e (e incluso) */
+function vizinhos(u: Unit, e: Unit, r: number) {
+  let n = 0;
+  const k = queryRadius2(e.x, e.y, r);
+  for (let j = 0; j < k; j++) if (inimigo(u, QBUF2[j])) n++;
+  return n;
 }
 export function countNearP(rad: number) { let n = 0; for (let i = 0; i < candN; i++) if (CAND[i].d <= rad) n++; return n; }
 
@@ -249,7 +256,13 @@ export function unitThink(u: Unit, sq: Squad) {
     const a = meteorSpot(u);
     if (a) { hab = "meteoro"; habSc = UTIL.habilidade * 1.3; ACTM.x = a.x; ACTM.y = a.y; }
   }
+  if (u.isArcher && P.closest && P.closestD <= K.range && P.closest.venAte <= W.simTime && u.mp >= CUSTO.veneno + reserva && podeMagia(u, "veneno") && (!hab || hab === "certeiro")) {
+    hab = "veneno"; habSc = UTIL.habilidade * .5;
+  }
+  /* bola de fogo quando o alvo tem companhia; senão, Trevas */
+  if (!hab && u.kind === "mage" && P.closest && P.closestD <= K.range && u.mp >= CUSTO.bolaFogo + reserva && podeMagia(u, "bolaFogo") && vizinhos(u, P.closest, EXPLOSAO.raio) >= 2) { hab = "bolaFogo"; habSc = UTIL.habilidade * 1.05; }
   if (!hab && u.kind === "mage" && P.closest && u.mp >= CUSTO.trevas + reserva && P.closestD <= K.range && podeMagia(u, "trevas")) { hab = "trevas"; habSc = UTIL.habilidade; }
+  if (!hab && u.kind === "mage" && P.closest && P.closestD <= K.range && u.mp >= CUSTO.bolaFogo + reserva + 20 && podeMagia(u, "bolaFogo")) { hab = "bolaFogo"; habSc = UTIL.habilidade * .8; }
   if (u.kind === "druid") {
     let presa: Unit | null = null, pd = 1e9;
     if (podeMagia(u, "nevasca") && u.mp >= CUSTO.nevasca) {
@@ -277,6 +290,14 @@ export function unitThink(u: Unit, sq: Squad) {
       const a = meteorSpot(u) || P.closest;
       hab = "nevasca"; habSc = UTIL.habilidade * 1.1; ACTM.x = a.x; ACTM.y = a.y;
     }
+  }
+  if (!hab && u.kind === "druid" && P.closest && P.closestD <= K.range && u.mp >= CUSTO.relampago + reserva + 10 && podeMagia(u, "relampago")) {
+    hab = "relampago"; habSc = UTIL.habilidade * (vizinhos(u, P.closest, EXPLOSAO.raio) >= 2 ? 1.05 : .8);
+  }
+  /* cavaleiro: a lâmina alcança quem ele ainda não chegou a tocar */
+  if (!hab && u.isKnight && tgt && u.mp >= CUSTO.bumerangue + reserva && podeMagia(u, "bumerangue")) {
+    const de = dist(u.x, u.y, tgt.x, tgt.y);
+    if (de > K.range + .4 && de <= BUMERANGUE.alcance && losU(u, tgt)) { hab = "bumerangue"; habSc = UTIL.habilidade * .95; ACT_ALVO.u = tgt; }
   }
   if (!hab && !K.keep && u.charge <= 0 && u.mp >= CUSTO.investida && podeMagia(u, "investida")) {
     let vitima: Unit | null = null, vd = 1e9;
@@ -345,8 +366,8 @@ function executar(u: Unit, sq: Squad, tgt: Unit | null) {
     case A_HABILIDADE: {
       const k = ACT.alvo as SpellKey;
       const guardado = u.target;
-      if (k === "investida" && ACT_ALVO.u) u.target = ACT_ALVO.u;
-      if (k === "triplo" || k === "certeiro" || k === "trevas") u.target = u.ai.p.closest || guardado;
+      if ((k === "investida" || k === "bumerangue") && ACT_ALVO.u) u.target = ACT_ALVO.u;
+      if (k === "triplo" || k === "certeiro" || k === "trevas" || k === "veneno" || k === "bolaFogo" || k === "relampago") u.target = u.ai.p.closest || guardado;
       let ok = false;
       if (k === "meteoro") ok = lancarMeteoro(u, ACT.x, ACT.y);
       else if (k === "nevasca") ok = lancarNevasca(u, ACT.x, ACT.y);
@@ -356,6 +377,10 @@ function executar(u: Unit, sq: Squad, tgt: Unit | null) {
       else if (k === "certeiro") ok = lancarCerteiro(u);
       else if (k === "terremoto") ok = lancarTerremoto(u);
       else if (k === "investida") ok = lancarInvestida(u, 2.6, 7.5);
+      else if (k === "bumerangue") ok = lancarBumerangue(u);
+      else if (k === "veneno") ok = lancarVeneno(u);
+      else if (k === "bolaFogo") ok = lancarBolaFogo(u);
+      else if (k === "relampago") ok = lancarRelampago(u);
       ACT_ALVO.u = null;
       if (ok) { if (k === "meteoro") setState(u, ST.METEOR); else if (k === "investida") setState(u, ST.CHARGE); return; }
       u.target = guardado;

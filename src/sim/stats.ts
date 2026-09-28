@@ -35,7 +35,8 @@ export function recalcular(u: Unit, ganhaVida?: boolean) {
   u.defesa = Math.min(DEF_MAX, a.def * pv(PONTO.def, u.kind)) + Math.min(GEAR_DEF_MAX, g.def * pv(PONTO.def, u.kind));
   u.magic = a.mag + g.mag;
   u.acerto = Math.min(ACERTO_MAX, ACERTO_BASE + (a.dex + g.dex) * ACERTO_DEX);
-  u.velo = 1 + Math.min(.3, g.spd / 100);
+  /* cada nível anda 0,5% mais rápido (teto de +25%): pouco por vez, visível ao longo da jornada */
+  u.velo = 1 + Math.min(.3, g.spd / 100) + (u.beast ? 0 : Math.min(.25, (u.lvl - 1) * .005));
   u.regHp = a.hp * REGEN_PONTO.hp; u.regMp = a.mp * REGEN_PONTO.mp;
   if (ganhaVida) { u.hp += Math.max(0, u.maxHp - hpAntes); u.mp += Math.max(0, u.maxMp - mpAntes); }
   u.hp = Math.min(u.hp, u.maxHp); u.mp = Math.min(u.mp, u.maxMp);

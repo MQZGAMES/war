@@ -5,7 +5,7 @@
    [SYSTEM: WORLD_INVITE] [SYSTEM: AI_TATICA] [SYSTEM: AI_PERFIL]
    [SYSTEM: AI_GRUPO] [SYSTEM: AI_CICLO] [SYSTEM: WORLD_ZONE]
    ================================================================ */
-import { FAUNA, KINDS, ST, TEAMS, VERMELHA_N, type AtqModo, type KindKey } from "./data";
+import { BEASTS, FAUNA, KINDS, ST, TEAMS, VERMELHA_N, type AtqModo, type KindKey } from "./data";
 import { avisoDe, fx, ui } from "./fx";
 import { darItem, negociar, novoItem, pocaoItem, precisaNpc, saldo, livres, PRECO_POCAO } from "./items";
 import { KIT, BASES, COFRE_N, MOCHILA_N } from "./itemsData";
@@ -54,7 +54,7 @@ function modeloDaZona(tier: number) {
 export function criarZonas() {
   W.zones = [];
   const c = W.cidade, N = W.N;
-  const alvo = clamp(Math.round(N * N / 470), 9, 30);
+  const alvo = clamp(Math.round(N * N / 470), 9, N > 150 ? 44 : 30);
   const dMax = Math.max(dist(c.x, c.y, 3, 3), dist(c.x, c.y, N - 3, 3), dist(c.x, c.y, 3, N - 3), dist(c.x, c.y, N - 3, N - 3));
   const cru: { x: number; y: number; r: number; dT: number }[] = [];
   for (let tent = 0; tent < alvo * 80 && cru.length < alvo; tent++) {
@@ -74,7 +74,7 @@ export function criarZonas() {
     const n = t === 6 ? cru.length - i : Math.max(t < 3 ? 1 : 0, Math.round(cru.length * COTA_TIER[t]));
     for (let k = 0; k < n && i < cru.length; k++, i++) {
       const cz = cru[i], mod = modeloDaZona(t + 1);
-      W.zones.push({ x: cz.x, y: cz.y, r: cz.r, tier: mod.tier, name: mod.n, sp: mod.sp as Record<string, number>,
+      W.zones.push({ x: cz.x, y: cz.y, r: cz.r, tier: mod.tier, name: mod.n, sp: { ...mod.sp } as Record<string, number>,
         farto: 1 + cz.r * .12, pop: 0, alvoPop: 0, grupos: 0, repT: 0, id: W.zones.length });
     }
   }
@@ -92,6 +92,24 @@ export function criarZonas() {
     const sp: Record<string, number> = {}; sp[esp] = 1;
     W.zones.push({ x, y, r: 1.5, tier: mod.tier, name: mod.n, sp, farto: 1, pop: 0, alvoPop: 0, grupos: 0, repT: 0, id: W.zones.length, errante: 1 });
     feitos++;
+  }
+  garantirEspecies();
+}
+/* todo mundo tem as 14 criaturas, mesmo com "Poucos": a espécie que o
+   sorteio deixou de fora entra no ponto de caça da faixa mais próxima */
+function faixaDaEspecie(k: string) { let t = 7; for (const z of ZONAS) if (z.sp[k as KindKey] && z.tier < t) t = z.tier; return t; }
+function garantirEspecies() {
+  const fixas = W.zones.filter((z) => !z.errante);
+  if (!fixas.length) return;
+  for (const k of BEASTS) {
+    if (W.zones.some((z) => z.sp[k])) continue;
+    const t = faixaDaEspecie(k);
+    let melhor = fixas[0], md = 1e9;
+    for (const z of fixas) {
+      const d = Math.abs(z.tier - t) * 10 + Object.keys(z.sp).length;
+      if (d < md) { md = d; melhor = z; }
+    }
+    melhor.sp[k] = KINDS[k].matilha ? 2 : 1;
   }
 }
 
@@ -127,7 +145,8 @@ function soltarBando(b: Bando, n: number) {
     u.maxHp = Math.round(K.hp * g); u.hp = u.maxHp;
     u.bonus = K.dmg * (g - 1);
     u.home = { x: b.x, y: b.y };
-    u.roam = z.errante ? 5 : BANDO_ROAM; u.coleira = z.errante ? 14 : Math.max(BANDO_COLEIRA, z.r * 1.4);
+    /* bicho grande pede mais chão para pastar sem trombar no bando */
+    u.roam = z.errante ? 5 : Math.max(BANDO_ROAM, K.r * 4.5); u.coleira = z.errante ? 14 : Math.max(BANDO_COLEIRA, z.r * 1.4);
     u.zona = z; u.bando = b;
     u.fa = rnd() * 6.283; u.moveA = u.fa;
     W.units.push(u);
@@ -140,18 +159,28 @@ export function povoarZonas() {
   let bruto = 0;
   for (const z of W.zones) for (const k in z.sp) bruto += z.sp[k] * z.farto;
   const f = bruto ? Math.min(2.2, W.worldBeastCap / bruto) : 1;
-  let postos = 0;
-  for (const z of W.zones) {
-    z.pop = 0; z.alvoPop = 0; z.bandos = [];
-    for (const k in z.sp) {
-      const n = Math.min(Math.max(1, Math.round(z.sp[k] * z.farto * f)), Math.max(0, W.worldBeastCap - postos));
-      if (!n) continue;
-      z.alvoPop += n; postos += n;
+  /* cada espécie de cada ponto recebe ao menos 1; se o teto apertar,
+     corta dos grupos maiores — nunca some uma criatura do mundo */
+  const cotas: { z: Zona; k: string; n: number }[] = [];
+  let soma = 0;
+  for (const z of W.zones) for (const k in z.sp) { const n = Math.max(1, Math.round(z.sp[k] * z.farto * f)); cotas.push({ z, k, n }); soma += n; }
+  while (soma > W.worldBeastCap) {
+    let m = null as (typeof cotas)[number] | null;
+    for (const c of cotas) if (c.n > 1 && (!m || c.n > m.n)) m = c;
+    if (!m) break;
+    m.n--; soma--;
+  }
+  for (const z of W.zones) { z.pop = 0; z.alvoPop = 0; z.bandos = []; }
+  for (const c of cotas) {
+    const z = c.z, k = c.k;
+    {
+      const n = c.n;
+      z.alvoPop += n;
       const nb = Math.ceil(n / bandoMax(k as KindKey)), base = Math.floor(n / nb), sobra = n - base * nb;
       for (let i = 0; i < nb; i++) {
         const p = pontoDeBando(z);
         const b: Bando = { x: p.x, y: p.y, kind: k as KindKey, max: base + (i < sobra ? 1 : 0), pop: 0, repT: 0, z };
-        W.bandos.push(b); z.bandos.push(b);
+        W.bandos.push(b); z.bandos!.push(b);
         soltarBando(b, b.max);
       }
     }

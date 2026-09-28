@@ -23,8 +23,8 @@ import { Barra, fmt, clique } from "./comp";
 import { Grade } from "./itens";
 import { Deck } from "./deck";
 
-const ICO_MAGIA: Record<SpellKey, string> = { investida: "investida", triplo: "triplo", meteoro: "meteoro", trevas: "trevas", terremoto: "terremoto", nevasca: "nevasca", chuva: "chuva", cura: "cura", certeiro: "certeiro" };
-const CLS_MAGIA: Record<SpellKey, string> = { investida: "m-terra", triplo: "m-arco", meteoro: "m-fogo", trevas: "m-trevas", terremoto: "m-terra", nevasca: "m-gelo", chuva: "m-cura", cura: "m-cura", certeiro: "m-arco" };
+const ICO_MAGIA: Record<SpellKey, string> = { investida: "investida", triplo: "triplo", meteoro: "meteoro", trevas: "trevas", terremoto: "terremoto", nevasca: "nevasca", chuva: "chuva", cura: "cura", certeiro: "certeiro", bumerangue: "bumerangue", veneno: "veneno", bolaFogo: "bolaFogo", relampago: "relampago" };
+const CLS_MAGIA: Record<SpellKey, string> = { investida: "m-terra", triplo: "m-arco", meteoro: "m-fogo", trevas: "m-trevas", terremoto: "m-terra", nevasca: "m-gelo", chuva: "m-cura", cura: "m-cura", certeiro: "m-arco", bumerangue: "m-terra", veneno: "m-veneno", bolaFogo: "m-fogo", relampago: "m-raio" };
 const mmss = (ms: number) => { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
 
 export function Hud() {
@@ -144,7 +144,7 @@ function Acao() {
   return (
     <>
       <div class="acao">
-        {[0, 1, 2].map((i) => {
+        {[0, 1, 2, 3].map((i) => {
           const k = slotDe(u, i), m = magiaDe(u, k), ex = exaustoEm(u, k), falta = u.mp < m.custo;
           const cd = ex > 0 ? Math.round(ex / (EXA[k] || 2) * 100) : 0;
           return (

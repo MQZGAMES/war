@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { FX, type FxEv } from "../sim/fx";
 import { G, W } from "../sim/state";
 import type { Unit } from "../sim/types";
-import { CHUVA_R, MET_R, NEVASCA } from "../sim/data";
+import { CHUVA_R, EXPLOSAO, MET_R, NEVASCA } from "../sim/data";
 import { Particulas } from "./particles";
 import { alturaEm } from "./terrain";
 import { engine, tremerCamera } from "./engine";
@@ -100,6 +100,36 @@ function lampejo(x: number, y: number, h: number, cor: string, e0: number, e1: n
 }
 /* golpe corpo a corpo: arco claro na frente de quem bate */
 const arcos: { m: THREE.Mesh; vida: number }[] = [];
+/* relâmpago: um risco em zigue-zague do céu até o alvo, com galhos */
+const raios: { m: THREE.Group; vida: number; max: number }[] = [];
+const matRaio = () => new THREE.MeshBasicMaterial({ color: "#e8f4ff", transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+function risco(g: THREE.Group, mat: THREE.Material, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, grossura: number) {
+  const a = new THREE.Vector3(x0, y0, z0), b = new THREE.Vector3(x1, y1, z1);
+  const d = a.distanceTo(b);
+  const m = new THREE.Mesh(new THREE.BoxGeometry(grossura, d, grossura), mat);
+  m.position.copy(a).add(b).multiplyScalar(.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+  g.add(m);
+}
+function raioDoCeu(x: number, h: number, y: number) {
+  const g = new THREE.Group(), mat = matRaio();
+  let px = x + (Math.random() - .5) * 1.5, py = h + 8, pz = y + (Math.random() - .5) * 1.5;
+  const passos = 9;
+  for (let i = 1; i <= passos; i++) {
+    const k = i / passos;
+    const nx = i === passos ? x : x + (px - x) * .35 + (Math.random() - .5) * .9 * (1 - k);
+    const nz = i === passos ? y : y + (pz - y) * .35 + (Math.random() - .5) * .9 * (1 - k);
+    const ny = h + 8 * (1 - k);
+    risco(g, mat, px, py, pz, nx, ny, nz, .07);
+    if (i > 1 && i < passos - 1 && Math.random() < .45) {
+      const bx = nx + (Math.random() - .5) * 1.4, bz = nz + (Math.random() - .5) * 1.4;
+      risco(g, mat, nx, ny, nz, bx, ny - .8 - Math.random() * .6, bz, .035);
+    }
+    px = nx; py = ny; pz = nz;
+  }
+  raiz.add(g);
+  raios.push({ m: g, vida: .32, max: .32 });
+}
 let geoArco: THREE.BufferGeometry;
 function cortar(u: Unit, forte: boolean) {
   const v = VISTAS.get(u.id);
@@ -133,20 +163,33 @@ function criarGeoArco() {
 interface VistaProj { m: THREE.Object3D; kind: string; brilho?: THREE.Sprite }
 const PROJ = new Map<number, VistaProj>();
 const livres: Record<string, VistaProj[]> = {};
-let geoFlecha: THREE.BufferGeometry, matFlecha: THREE.MeshLambertMaterial;
+let geoFlecha: THREE.BufferGeometry, matFlecha: THREE.MeshLambertMaterial, matFlechaVeneno: THREE.MeshLambertMaterial;
 function criarProj(kind: string): VistaProj {
   const L = livres[kind];
   if (L && L.length) { const v = L.pop()!; v.m.visible = true; if (v.brilho) v.brilho.visible = true; return v; }
   let m: THREE.Object3D, brilho: THREE.Sprite | undefined;
   if (kind === "arrow") m = new THREE.Mesh(geoFlecha, matFlecha);
-  else {
-    const cor = kind === "fire" ? "#ffb04a" : kind === "ice" ? "#bfeaff" : kind === "dark" ? "#b070ff" : "#ff7a2a";
+  else if (kind === "veneno") m = new THREE.Mesh(geoFlecha, matFlechaVeneno);
+  else if (kind === "lamina") {
+    /* a arma girando deitada: lâmina, guarda e cabo */
+    const g = new THREE.Group(), gira = new THREE.Group();
+    const metal = new THREE.MeshLambertMaterial({ color: "#dfe6ea", emissive: "#6a7a88", emissiveIntensity: .35, flatShading: true });
+    const lam = new THREE.Mesh(new THREE.BoxGeometry(.5, .025, .075), metal); lam.position.x = .16;
+    const guarda = new THREE.Mesh(new THREE.BoxGeometry(.04, .04, .22), new THREE.MeshLambertMaterial({ color: "#c9a23e", flatShading: true })); guarda.position.x = -.1;
+    const cabo = new THREE.Mesh(new THREE.BoxGeometry(.16, .045, .045), new THREE.MeshLambertMaterial({ color: "#5a3a22" })); cabo.position.x = -.2;
+    gira.add(lam, guarda, cabo); gira.name = "gira";
+    g.add(gira);
+    m = g;
+  } else {
+    const cor = kind === "fire" ? "#ffb04a" : kind === "ice" ? "#bfeaff" : kind === "dark" ? "#b070ff" : kind === "raio" ? "#9fd0ff" : "#ff7a2a";
     const g = new THREE.Group();
     if (kind === "ice") g.add(new THREE.Mesh(new THREE.OctahedronGeometry(.12, 0), new THREE.MeshBasicMaterial({ color: "#e8f8ff" })));
+    else if (kind === "raio") g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.09, 0), new THREE.MeshBasicMaterial({ color: "#ffffff" })));
+    else if (kind === "bolaFogo") g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.15, 1), new THREE.MeshBasicMaterial({ color: "#fff2c0" })));
     else if (kind === "dark") g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.13, 1), new THREE.MeshBasicMaterial({ color: "#0a0410" })));
     else g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(kind === "bola" ? .2 : .1, 1), new THREE.MeshBasicMaterial({ color: "#fff2c0" })));
     brilho = new THREE.Sprite(new THREE.SpriteMaterial({ map: texBrilho(), color: cor, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
-    brilho.scale.setScalar(kind === "bola" ? 1.3 : kind === "dark" ? .8 : .65);
+    brilho.scale.setScalar(kind === "bola" ? 1.3 : kind === "bolaFogo" ? 1.05 : kind === "raio" ? .9 : kind === "dark" ? .8 : .65);
     brilho.renderOrder = 7;
     raiz.add(brilho);
     m = g;
@@ -206,6 +249,7 @@ export function iniciarFx(scene: THREE.Scene) {
   void fg;
   geoFlecha = mergeSimples([haste, ponta, pena]);
   matFlecha = new THREE.MeshLambertMaterial({ color: "#e8dcbc" });
+  matFlechaVeneno = new THREE.MeshLambertMaterial({ color: "#9ee07a", emissive: "#3a8a20", emissiveIntensity: .6 });
   geoRocha = new THREE.DodecahedronGeometry(.4, 0);
   geoArco = criarGeoArco();
   for (let i = 0; i < 5; i++) { const l = new THREE.PointLight("#ffffff", 0, 7, 2); raiz.add(l); luzes.push({ l, vida: 0, max: 1, i0: 0 }); }
@@ -235,6 +279,8 @@ export function limparFx() {
   METS.clear();
   for (const l of lampejos) raiz.remove(l.s);
   lampejos.length = 0;
+  for (const r of raios) raiz.remove(r.m);
+  raios.length = 0;
   FX.length = 0;
 }
 
@@ -327,7 +373,7 @@ function tratar(e: FxEv) {
       const u = e.u;
       if (!perto(u.x, u.y)) break;
       const k = e.k;
-      const cor = k === "meteoro" || k === "bola" || k === "onda" ? "#ff8a2a" : k === "nevasca" ? "#9fdcff" : k === "chuva" || k === "cura" ? "#8fe6a8" : k === "trevas" ? "#b070ff" : k === "terremoto" ? "#d8b070" : "#ffe9a8";
+      const cor = k === "meteoro" || k === "bola" || k === "onda" || k === "bolaFogo" ? "#ff8a2a" : k === "nevasca" ? "#9fdcff" : k === "relampago" ? "#bfe4ff" : k === "veneno" ? "#7fe05a" : k === "chuva" || k === "cura" ? "#8fe6a8" : k === "trevas" ? "#b070ff" : k === "terremoto" || k === "bumerangue" ? "#d8b070" : "#ffe9a8";
       const v = VISTAS.get(u.id);
       const pto = v && (v.rig.base.pontos.orbe ? "orbe" : v.rig.base.pontos.boca ? "boca" : "arma");
       const pp = v && pto ? pontoMundo(v.rig, pto, V) : null;
@@ -336,14 +382,15 @@ function tratar(e: FxEv) {
       if (k === "cura") ADD.emitir(u.x, alturaEm(u.x, u.y) + .2, u.y, { n: 24, raio: .45, vy: 1.6, esp: .15, vida: 1, tam: .18, tamFim: .04, cor: "#dfffe0", cor2: "#3fd46a" });
       if (k === "investida") ALFA.emitir(u.x, alturaEm(u.x, u.y) + .1, u.y, { n: 8, raio: .3, esp: .8, vy: .3, vida: .6, tam: .45, tamFim: .8, cor: "#b8a88a", alfa: .5 });
       if (k === "meteoro" || k === "nevasca" || k === "chuva" || k === "cura") anel(u.x, u.y, cor, 1.1, .6, .4);
-      const nome = k === "meteoro" || k === "bola" || k === "onda" ? "fogoLanca" : k === "nevasca" ? "geloLanca" : k === "chuva" || k === "cura" ? "cura" : k === "trevas" ? "trevas" : k === "terremoto" ? "terremoto" : k === "investida" ? "investida" : "magia";
+      const nome = k === "meteoro" || k === "bola" || k === "onda" || k === "bolaFogo" ? "fogoLanca" : k === "nevasca" ? "geloLanca" : k === "veneno" ? "veneno" : k === "bumerangue" ? "lamina" : k === "chuva" || k === "cura" ? "cura" : k === "trevas" ? "trevas" : k === "terremoto" ? "terremoto" : k === "investida" ? "investida" : "magia";
       som(nome, volume(u.x, u.y));
-      if (k === "bola" || k === "onda") clarao(px, pz, 1, "#ff8a2a", 3, .4);
+      if (k === "bola" || k === "onda" || k === "bolaFogo") clarao(px, pz, 1, "#ff8a2a", 3, .4);
+      if (k === "relampago") { ADD.emitir(px, py + .4, pz, { n: 10, esp: 1.2, vida: .25, tam: .1, cor: "#ffffff", cor2: "#6ab8ff" }); clarao(px, pz, 1.2, "#9fd0ff", 3, .3); }
       break;
     }
     case "shoot": {
       const u = e.u;
-      const n = e.kind === "arrow" ? "flecha" : e.kind === "fire" || e.kind === "bola" ? "fogo" : e.kind === "ice" ? "gelo" : "trevas";
+      const n = e.kind === "arrow" || e.kind === "veneno" ? "flecha" : e.kind === "fire" || e.kind === "bola" || e.kind === "bolaFogo" ? "fogo" : e.kind === "ice" || e.kind === "raio" ? "gelo" : e.kind === "lamina" ? "lamina" : "trevas";
       som(n, volume(u.x, u.y) * .8);
       break;
     }
@@ -371,8 +418,21 @@ function tratar(e: FxEv) {
 function impacto(x: number, y: number, kind: string) {
   const h = alturaEm(x, y);
   const vol = volume(x, y);
-  if (kind === "meteoro" || kind === "bola") {
-    const R = kind === "meteoro" ? MET_R : 1.7;
+  if (kind === "raio") {
+    const R = EXPLOSAO.raio;
+    raioDoCeu(x, h, y);
+    ADD.emitir(x, h + .3, y, { n: 40, esp: R * 2.4, espY: R, vy: 1.2, vida: .45, tam: .18, tamFim: .03, cor: "#ffffff", cor2: "#5aa8ff", arrasto: 3 });
+    ADD.emitir(x, h + .1, y, { n: 18, raio: R * .8, esp: 2.5, vy: 2, vida: .35, tam: .08, cor: "#e8f6ff", grav: 4 });
+    anel(x, y, "#bfe4ff", R * 1.3, .35, .3);
+    lampejo(x, y, .8, "#dff0ff", .3, R * 3.4, .25);
+    clarao(x, y, 2.5, "#9fd0ff", 16, .35, 12);
+    decal("queimado", x, y, R * .45, 3);
+    if (vol > .2 && PREF.efeitos) tremerCamera(1.4 * vol);
+    som("trovao", vol);
+    return;
+  }
+  if (kind === "meteoro" || kind === "bola" || kind === "bolaFogo") {
+    const R = kind === "meteoro" ? MET_R : kind === "bolaFogo" ? EXPLOSAO.raio : 1.7;
     ADD.emitir(x, h + .3, y, { n: kind === "meteoro" ? 70 : 40, esp: R * 2.2, espY: R * 1.5, vy: 1.5, vida: .7, tam: .45, tamFim: .08, cor: "#fff0b0", cor2: "#ff3a0a", arrasto: 2.5, grav: 2 });
     ALFA.emitir(x, h + .5, y, { n: kind === "meteoro" ? 18 : 10, raio: R * .6, vy: 1, esp: .5, vida: 1.6, tam: .9, tamFim: 1.8, cor: "#3a3230", alfa: .55 });
     ADD.emitir(x, h + .2, y, { n: 26, esp: 3, vy: 3, vida: 1.1, tam: .09, cor: "#ffd070", grav: 6 });
@@ -428,13 +488,23 @@ export function atualizarFx(dt: number, alpha: number, t: number, noite: number)
     const k = p.d0 > 0 ? Math.max(0, Math.min(1, 1 - Math.hypot(p.tx - p.x, p.ty - p.y) / p.d0)) : 1;
     const hy = alturaEm(p.x, p.y) + p.h0 + (p.h1 - p.h0) * k + p.z * 1.4;
     v.m.position.set(p.x, hy, p.y);
-    QD.set(p.dirx, (p.h1 - p.h0) / Math.max(1, p.d0) - Math.cos(k * Math.PI) * p.z * .9, p.diry).normalize();
-    v.m.quaternion.setFromUnitVectors(UP, QD);
+    if (p.kind === "lamina") {
+      /* gira deitada; rastro prateado */
+      const g = v.m.getObjectByName("gira");
+      if (g) g.rotation.y += dt * 22;
+      if (Math.random() < .7) ADD.emitir(p.x, hy, p.y, { n: 1, esp: .1, vida: .25, tam: .2, tamFim: .02, cor: "#ffffff", cor2: "#8aa0b0" });
+    } else {
+      QD.set(p.dirx, (p.h1 - p.h0) / Math.max(1, p.d0) - Math.cos(k * Math.PI) * p.z * .9, p.diry).normalize();
+      v.m.quaternion.setFromUnitVectors(UP, QD);
+    }
+    if (p.kind === "veneno") ADD.emitir(p.x, hy, p.y, { n: 1, esp: .15, vida: .4, tam: .14, tamFim: .02, cor: "#c8ff90", cor2: "#3a9a20" });
+    if (p.kind === "raio") ADD.emitir(p.x + (Math.random() - .5) * .3, hy + (Math.random() - .5) * .3, p.y + (Math.random() - .5) * .3, { n: 2, esp: .8, vida: .12, tam: .09, cor: "#ffffff", cor2: "#6ab8ff" });
     if (v.brilho) {
       v.brilho.position.copy(v.m.position);
-      const cor = p.kind === "fire" ? ["#fff0c0", "#ff5a10"] : p.kind === "ice" ? ["#ffffff", "#5ab0ff"] : p.kind === "dark" ? ["#c080ff", "#1a0028"] : ["#fff0b0", "#ff4000"];
+      const cor = p.kind === "fire" ? ["#fff0c0", "#ff5a10"] : p.kind === "ice" ? ["#ffffff", "#5ab0ff"] : p.kind === "raio" ? ["#ffffff", "#4a9aff"] : p.kind === "dark" ? ["#c080ff", "#1a0028"] : ["#fff0b0", "#ff4000"];
       if (p.kind === "dark") ALFA.emitir(p.x, hy, p.y, { n: 1, esp: .15, vida: .5, tam: .35, tamFim: .6, cor: "#1a0a28", alfa: .7 });
-      ADD.emitir(p.x, hy, p.y, { n: p.kind === "bola" ? 3 : 1, esp: .2, vida: p.kind === "bola" ? .45 : .3, tam: p.kind === "bola" ? .5 : .22, tamFim: .03, cor: cor[0], cor2: cor[1] });
+      const grande = p.kind === "bola" ? 1 : p.kind === "bolaFogo" ? .7 : 0;
+      ADD.emitir(p.x, hy, p.y, { n: grande ? (grande === 1 ? 3 : 2) : 1, esp: .2, vida: grande ? .45 : .3, tam: grande ? .5 * grande + .1 : .22, tamFim: .03, cor: cor[0], cor2: cor[1] });
     }
   }
   for (const [id, v] of PROJ) if (!vivos.has(id)) { soltarProj(v); PROJ.delete(id); }
@@ -481,6 +551,12 @@ export function atualizarFx(dt: number, alpha: number, t: number, noite: number)
       ADD.emitir(o.x + px * s, h + .15, o.y + py * s, { n: 2, esp: .25, vy: 2.2, vida: .45, tam: .6, tamFim: .1, cor: "#fff0a0", cor2: "#ff2a00" });
     }
     if (Math.random() < .5) ALFA.emitir(o.x, h + .8, o.y, { n: 1, raio: o.larg, vy: 1.2, esp: .2, vida: 1, tam: .7, tamFim: 1.2, cor: "#2a2220", alfa: .4 });
+  }
+
+  /* envenenado: bolhas verdes */
+  for (const u of W.units) {
+    if (u.dead || u.venAte <= W.simTime || !perto(u.x, u.y) || Math.random() > dt * 9) continue;
+    ADD.emitir(u.x, peito(u), u.y, { n: 1, raio: .25, vy: .7, esp: .1, vida: .8, tam: .12, tamFim: .03, cor: "#c8ff90", cor2: "#3a9a20" });
   }
 
   /* investida: poeira atrás de quem corre */
@@ -531,6 +607,18 @@ export function atualizarFx(dt: number, alpha: number, t: number, noite: number)
     const k = 1 - l.vida / l.max;
     l.s.scale.setScalar(l.e0 + (l.e1 - l.e0) * k);
     (l.s.material as THREE.SpriteMaterial).opacity = 1 - k;
+  }
+  for (let i = raios.length - 1; i >= 0; i--) {
+    const r = raios[i]; r.vida -= dt;
+    const mat = (r.m.children[0] as THREE.Mesh | undefined)?.material as THREE.MeshBasicMaterial | undefined;
+    if (r.vida <= 0) {
+      raiz.remove(r.m);
+      for (const c of r.m.children) (c as THREE.Mesh).geometry.dispose();
+      mat?.dispose(); raios.splice(i, 1); continue;
+    }
+    /* pisca duas vezes antes de sumir */
+    const k = r.vida / r.max;
+    if (mat) mat.opacity = (k > .55 || (k > .25 && k < .4)) ? 1 : .25 * k;
   }
   for (let i = arcos.length - 1; i >= 0; i--) {
     const a = arcos[i]; a.vida -= dt;

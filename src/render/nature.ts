@@ -220,59 +220,81 @@ export function construirNatureza(qual: "baixa" | "media" | "alta"): THREE.Group
   const matPinho = comVento(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), .035, 2.6, .8, true);
   const matGrama = comVento(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), .09, .3, 1.4);
 
-  const arvores = W.props.filter((p) => p.t === "tree");
-  const pedras = W.props.filter((p) => p.t === "rock");
-  const tronco = instancias(geoTronco(), matV, arvores.length);
-  const copa = instancias(geoCopa(), matCopa, arvores.length);
-  const pinho = instancias(geoPinheiro(), matPinho, arvores.length);
-  const galhos = instancias(geoGalhos(), matV, arvores.length);
-  for (const im of [copa, pinho]) im.geometry.setAttribute("aFade", new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, arvores.length)), 1).setUsage(THREE.DynamicDrawUsage));
+  /* árvores e pedras em blocos de 32×32 ladrilhos: a câmera (e a luz da
+     sombra) só desenha os blocos à vista — é o que deixa o mapa Mega leve */
+  const BLOCO = 32;
+  const porBloco = <T extends { x: number; y: number }>(L: T[]) => {
+    const m = new Map<number, T[]>();
+    for (const p of L) { const k = ((p.y / BLOCO) | 0) * 1000 + ((p.x / BLOCO) | 0); let l = m.get(k); if (!l) m.set(k, l = []); l.push(p); }
+    return [...m.values()];
+  };
+  const fechar = (...ms: THREE.InstancedMesh[]) => {
+    for (const im of ms) {
+      if (!im.count) continue;
+      im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
+      im.computeBoundingSphere(); im.frustumCulled = true;
+      grupo.add(im);
+    }
+  };
+  const gTronco = geoTronco(), gCopa = geoCopa(), gPinho = geoPinheiro(), gGalhos = geoGalhos();
   const tintas = {
     normal: [cor("#ffffff"), cor("#e8f2d8"), cor("#f4ffe8"), cor("#dfe9cf")],
     sombrio: [cor("#7a6a8a"), cor("#6a7a70"), cor("#80708a")],
     seco: [cor("#e8d890"), cor("#f0e0a0"), cor("#d8c880")],
   };
-  for (const p of arvores) {
-    const x = p.x + .5 + (h2(p.x, p.y) - .5) * .3, y = p.y + .5 + (h2(p.y, p.x) - .5) * .3;
-    const z = temaEm(x, y), nome = z ? z.name : "";
-    const s = .85 + p.s * .45, ry = h2(p.x * 3, p.y * 7) * 6.28, hy = alturaEm(x, y);
-    if (QUEIMADO.has(nome)) {                                  // tronco queimado, sem copa
-      const t = por(tronco, x, hy, y, ry, [s * 1.2, s * 1.5, s * 1.2], cor("#3a2e28"));
-      const gI = por(galhos, x, hy, y, ry, s);
-      ARVORES.push({ x, y, h: 1.6 * s, mesh: tronco, i: t, mesh2: galhos, i2: gI });
-      if (h2(p.x, p.y * 3) < .25) EMISSORES.push({ x, y, h: .3, tipo: "brasa", r: .6 });
-      continue;
+  for (const arvores of porBloco(W.props.filter((p) => p.t === "tree"))) {
+    const n = arvores.length;
+    const tronco = instancias(gTronco, matV, n);
+    const copa = instancias(gCopa.clone(), matCopa, n);
+    const pinho = instancias(gPinho.clone(), matPinho, n);
+    const galhos = instancias(gGalhos, matV, n);
+    for (const im of [copa, pinho]) im.geometry.setAttribute("aFade", new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, n)), 1).setUsage(THREE.DynamicDrawUsage));
+    for (const p of arvores) {
+      const x = p.x + .5 + (h2(p.x, p.y) - .5) * .3, y = p.y + .5 + (h2(p.y, p.x) - .5) * .3;
+      const z = temaEm(x, y), nome = z ? z.name : "";
+      const s = .85 + p.s * .45, ry = h2(p.x * 3, p.y * 7) * 6.28, hy = alturaEm(x, y);
+      if (QUEIMADO.has(nome)) {                                  // tronco queimado, sem copa
+        const t = por(tronco, x, hy, y, ry, [s * 1.2, s * 1.5, s * 1.2], cor("#3a2e28"));
+        const gI = por(galhos, x, hy, y, ry, s);
+        ARVORES.push({ x, y, h: 1.6 * s, mesh: tronco, i: t, mesh2: galhos, i2: gI });
+        if (h2(p.x, p.y * 3) < .25) EMISSORES.push({ x, y, h: .3, tipo: "brasa", r: .6 });
+        continue;
+      }
+      const t = por(tronco, x, hy, y, ry, s);
+      const tinta = SOMBRIO.has(nome) ? tintas.sombrio : SECO.has(nome) ? tintas.seco : tintas.normal;
+      const tc0 = tinta[Math.floor(h2(p.x * 5, p.y) * tinta.length)];
+      if (p.s < .6) {
+        const i = por(copa, x, hy, y, ry, s, tc0);
+        ARVORES.push({ x, y, h: 2.1 * s, mesh: tronco, i: t, mesh2: copa, i2: i });
+      } else {
+        const i = por(pinho, x, hy, y, ry, s * 1.05, tc0);
+        ARVORES.push({ x, y, h: 2.6 * s, mesh: tronco, i: t, mesh2: pinho, i2: i });
+      }
     }
-    const t = por(tronco, x, hy, y, ry, s);
-    const tinta = SOMBRIO.has(nome) ? tintas.sombrio : SECO.has(nome) ? tintas.seco : tintas.normal;
-    const tc0 = tinta[Math.floor(h2(p.x * 5, p.y) * tinta.length)];
-    if (p.s < .6) {
-      const i = por(copa, x, hy, y, ry, s, tc0);
-      ARVORES.push({ x, y, h: 2.1 * s, mesh: tronco, i: t, mesh2: copa, i2: i });
-    } else {
-      const i = por(pinho, x, hy, y, ry, s * 1.05, tc0);
-      ARVORES.push({ x, y, h: 2.6 * s, mesh: tronco, i: t, mesh2: pinho, i2: i });
-    }
+    fechar(tronco, copa, pinho, galhos);
   }
-  grupo.add(tronco, copa, pinho, galhos);
 
   /* pedras: três variações; ruína e fenda trocam o modelo */
-  const pv = [0, 1, 2].map((k) => instancias(geoPedra(k * 17 + 3), matV, pedras.length));
-  const coluna = instancias(geoColuna(), matV, pedras.length);
-  const obs = instancias(geoObsidiana(), matV, pedras.length);
-  for (const p of pedras) {
-    const x = p.x + .5, y = p.y + .5, z = temaEm(x, y), nome = z ? z.name : "", hy = alturaEm(x, y);
-    const ry = h2(p.x, p.y * 5) * 6.28, s = .9 + p.s * .5;
-    if (RUINA.has(nome)) { por(coluna, x, hy, y, ry, .9 + p.s * .3); continue; }
-    if (nome === "Fenda infernal" || nome === "Vale calcinado") {
-      por(obs, x, hy, y, ry, s);
-      if (h2(p.x * 7, p.y) < .5) EMISSORES.push({ x, y, h: .5, tipo: "cristal", r: .5 });
-      continue;
+  const gPedra = [0, 1, 2].map((k) => geoPedra(k * 17 + 3)), gColuna = geoColuna(), gObs = geoObsidiana();
+  for (const pedras of porBloco(W.props.filter((p) => p.t === "rock"))) {
+    const n = pedras.length;
+    const pv = gPedra.map((g) => instancias(g, matV, n));
+    const coluna = instancias(gColuna, matV, n);
+    const obs = instancias(gObs, matV, n);
+    for (const p of pedras) {
+      const x = p.x + .5, y = p.y + .5, z = temaEm(x, y), nome = z ? z.name : "", hy = alturaEm(x, y);
+      const ry = h2(p.x, p.y * 5) * 6.28, s = .9 + p.s * .5;
+      if (RUINA.has(nome)) { por(coluna, x, hy, y, ry, .9 + p.s * .3); continue; }
+      if (nome === "Fenda infernal" || nome === "Vale calcinado") {
+        por(obs, x, hy, y, ry, s);
+        if (h2(p.x * 7, p.y) < .5) EMISSORES.push({ x, y, h: .5, tipo: "cristal", r: .5 });
+        continue;
+      }
+      const big = nome === "Penhasco" || nome === "Trono do ciclope" ? 1.35 : 1;
+      por(pv[Math.floor(p.s * 3) % 3], x, hy, y, ry, [s * big, s * big * (.9 + p.s * .3), s * big]);
     }
-    const big = nome === "Penhasco" || nome === "Trono do ciclope" ? 1.35 : 1;
-    por(pv[Math.floor(p.s * 3) % 3], x, hy, y, ry, [s * big, s * big * (.9 + p.s * .3), s * big]);
+    fechar(...pv, coluna, obs);
   }
-  grupo.add(...pv, coluna, obs);
 
   /* grama: tufos por ladrilho, em blocos de 16×16 para o recorte da câmera */
   const dens = qual === "alta" ? 4 : qual === "media" ? 2 : 1;
@@ -282,7 +304,7 @@ export function construirNatureza(qual: "baixa" | "media" | "alta"): THREE.Group
     const pts: [number, number, number, number, THREE.Color][] = [];
     for (let y = by; y < Math.min(N, by + B); y++) for (let x = bx; x < Math.min(N, bx + B); x++) {
       const i = y * N + x;
-      if (tc[i] === 200 || tc[i] >= 4 || W.solid[i]) continue;
+      if (tc[i] === 200 || tc[i] >= 4 || W.solid[i] || W.tronco[i]) continue;
       const dc = Math.hypot(x + .5 - c.x, y + .5 - c.y);
       if (dc < CID_R + .8) continue;
       const z = temaEm(x + .5, y + .5), nome = z ? z.name : "";
@@ -319,7 +341,7 @@ export function construirNatureza(qual: "baixa" | "media" | "alta"): THREE.Group
   const CF = [cor("#ffffff"), cor("#f7d24a"), cor("#c77dff"), cor("#ff7aa8"), cor("#7ec8ff")];
   for (let y = 1; y < N - 1; y++) for (let x = 1; x < N - 1; x++) {
     const i = y * N + x;
-    if (tc[i] === 200 || tc[i] >= 4 || W.solid[i]) continue;
+    if (tc[i] === 200 || tc[i] >= 4 || W.solid[i] || W.tronco[i]) continue;
     const px = x + .2 + h2(x, y * 3) * .6, py = y + .2 + h2(y, x * 3) * .6, hy = alturaEm(px, py);
     const r = h2(x * 17, y * 31);
     const dc = Math.hypot(px - c.x, py - c.y);

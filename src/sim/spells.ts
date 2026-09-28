@@ -3,7 +3,7 @@
    Cada lançador devolve se a magia saiu, para a interface poder
    recusar o toque e a IA tentar outra coisa no mesmo pensamento.
    ================================================================ */
-import { ATALHOS, CHUVA_ALCANCE, CHUVA_CURA, CUSTO, ESPECIAL, INVESTIDA_PRESSA, MAG_DANO, MET_ALCANCE, MET_DANO, MET_QUEDA, MET_R, NEVASCA, POCAO, PROVOCA_T, SPELLS, ST, TERREMOTO, TREVAS, type SpellKey, type VocKey } from "./data";
+import { ATALHOS, BUMERANGUE, EXPLOSAO, CHUVA_ALCANCE, CHUVA_CURA, CUSTO, ESPECIAL, INVESTIDA_PRESSA, MAG_DANO, MET_ALCANCE, MET_DANO, MET_QUEDA, MET_R, NEVASCA, POCAO, PROVOCA_T, SPELLS, ST, TERREMOTO, TREVAS, type SpellKey, type VocKey } from "./data";
 import { fx } from "./fx";
 import { tirarPocao } from "./items";
 import { los, queryRadius, QBUF } from "./map";
@@ -20,6 +20,7 @@ export const podeMagia = (u: Unit, k: SpellKey) => exaustoEm(u, k) <= 0 && u.mp 
 export function atalhosPadrao(kind: VocKey) { return ATALHOS[kind].slice(); }
 export function slotDe(u: Unit, i: number): SpellKey {
   if (!u.slots) u.slots = atalhosPadrao(u.kind as VocKey);
+  if (u.slots.length < ATALHOS[u.kind as VocKey].length) for (const k of ATALHOS[u.kind as VocKey]) if (u.slots.indexOf(k) < 0) u.slots.push(k);
   return u.slots[i];
 }
 export interface MagiaInfo { chave: SpellKey; nome: string; custo: number; ex: number; mira: boolean; alc: number }
@@ -69,6 +70,43 @@ export function lancarMeteoro(u: Unit, x: number, y: number) {
   marcaCast(u, "meteoro");
   return true;
 }
+/* ---------- as quatro de 2 s ---------- */
+function alvoAoAlcance(u: Unit, k: SpellKey, alc: number) {
+  const t = u.target;
+  if (!t || t.dead || !podeMagia(u, k)) return null;
+  if (dist(u.x, u.y, t.x, t.y) > alc || !los(u.x, u.y, t.x, t.y)) return null;
+  return t;
+}
+export function lancarBumerangue(u: Unit) {
+  const t = alvoAoAlcance(u, "bumerangue", BUMERANGUE.alcance);
+  if (!t) return false;
+  u.mp -= CUSTO.bumerangue; marcaExaustao(u, "bumerangue");
+  u.swing = .42; u.swMax = .42; u.lunge = .25;
+  shoot(u, t, "lamina", dmgFis(u) * BUMERANGUE.fator);
+  marcaCast(u, "bumerangue");
+  return true;
+}
+export function lancarVeneno(u: Unit) {
+  const t = alvoAoAlcance(u, "veneno", u.K.range + .5);
+  if (!t) return false;
+  u.mp -= CUSTO.veneno; marcaExaustao(u, "veneno");
+  u.swing = .3; u.swMax = .3; u.lunge = .14;
+  shoot(u, t, "veneno", dmgFis(u));
+  marcaCast(u, "veneno");
+  return true;
+}
+function explosao(u: Unit, k: "bolaFogo" | "relampago") {
+  const t = alvoAoAlcance(u, k, u.K.range + 1);
+  if (!t) return false;
+  u.mp -= CUSTO[k]; marcaExaustao(u, k);
+  u.lunge = .2; u.swing = .36; u.swMax = .36;
+  marcaCast(u, k);
+  shoot(u, t, k === "bolaFogo" ? "bolaFogo" : "raio", EXPLOSAO.dano + u.magic * EXPLOSAO.mag, EXPLOSAO.raio);
+  return true;
+}
+export const lancarBolaFogo = (u: Unit) => explosao(u, "bolaFogo");
+export const lancarRelampago = (u: Unit) => explosao(u, "relampago");
+
 /* [SYSTEM: PROVOCACAO] o estrondo puxa o ódio de toda a bicharada */
 export function provocar(bicho: Unit, quem: Unit, ate: number) {
   if (!bicho.beast || !quem || quem.beast) return;
@@ -162,6 +200,10 @@ export function lancar(u: Unit, k: SpellKey, x?: number, y?: number): boolean {
     case "nevasca": return lancarNevasca(u, x!, y!);
     case "chuva": return lancarChuva(u, x!, y!);
     case "cura": return lancarCura(u, 1);
+    case "bumerangue": return lancarBumerangue(u);
+    case "veneno": return lancarVeneno(u);
+    case "bolaFogo": return lancarBolaFogo(u);
+    case "relampago": return lancarRelampago(u);
   }
   return false;
 }

@@ -28,7 +28,7 @@ export type FxEv =
   | { t: "loot"; u: Unit; it: Coisa }
   | { t: "invite"; u: Unit; ok: boolean | null }
   | { t: "charge"; u: Unit }
-  | { t: "impact"; x: number; y: number; kind: "meteoro" | "nevasca" | "chuva" | "bola" | "terremoto" | "baque" }
+  | { t: "impact"; x: number; y: number; kind: "meteoro" | "nevasca" | "chuva" | "bola" | "terremoto" | "baque" | "bolaFogo" | "raio" }
   | { t: "shake"; f: number }
   | { t: "ui"; s: "click" | "nega" | "compra" | "venda" | "equip" };
 

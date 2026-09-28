@@ -38,14 +38,14 @@ export interface KindDef {
 const RITMO = 2.0; // todo ataque básico sai a cada 2 s
 
 export const KINDS: Record<KindKey, KindDef> = {
-  knight: { key: "knight", pt: "Cavaleiro", icon: "⚔", hp: 155, spd: 2.02, range: 1.25, dmg: 32, cd: RITMO, armor: .12,
-    threat: 1.0, flee: .16, sight: 12, r: .34, mp: 60, rHp: 3.2, rMp: 1.1, alt: 1.15 },
-  archer: { key: "archer", pt: "Arqueiro", icon: "🏹", hp: 112, spd: 2.25, range: 4, dmg: 27, cd: RITMO, armor: .09,
-    threat: 1.55, flee: .34, sight: 13, r: .29, keep: 2.4, proj: "arrow", mp: 85, rHp: 2.2, rMp: 2.2, alt: 1.1 },
-  mage: { key: "mage", pt: "Mago", icon: "✦", hp: 96, spd: 1.76, range: 4, dmg: 25, cd: RITMO, armor: .05,
-    threat: 1.85, flee: .38, sight: 12, r: .3, keep: 2.6, proj: "fire", mp: 125, rHp: 1.2, rMp: 3.6, alt: 1.3 },
-  druid: { key: "druid", pt: "Druida", icon: "☘", hp: 96, spd: 1.76, range: 4, dmg: 21, cd: RITMO, armor: .05,
-    threat: 1.7, flee: .38, sight: 12, r: .3, keep: 2.6, proj: "ice", mp: 125, rHp: 1.2, rMp: 3.6, alt: 1.15 },
+  knight: { key: "knight", pt: "Cavaleiro", icon: "⚔", hp: 155, spd: 2.02, range: 1.25, dmg: 34, cd: RITMO, armor: .12,
+    threat: 1.0, flee: .16, sight: 12, r: .34, mp: 70, rHp: 3.2, rMp: 1.5, alt: 1.15 },
+  archer: { key: "archer", pt: "Arqueiro", icon: "🏹", hp: 112, spd: 2.25, range: 5, dmg: 27, cd: RITMO, armor: .09,
+    threat: 1.55, flee: .34, sight: 13, r: .29, keep: 2.9, proj: "arrow", mp: 85, rHp: 2.2, rMp: 2.2, alt: 1.1 },
+  mage: { key: "mage", pt: "Mago", icon: "✦", hp: 96, spd: 1.76, range: 5, dmg: 25, cd: RITMO, armor: .05,
+    threat: 1.85, flee: .38, sight: 12, r: .3, keep: 3.1, proj: "fire", mp: 125, rHp: 1.2, rMp: 3.6, alt: 1.3 },
+  druid: { key: "druid", pt: "Druida", icon: "☘", hp: 104, spd: 1.76, range: 5, dmg: 23, cd: RITMO, armor: .05,
+    threat: 1.7, flee: .38, sight: 12, r: .3, keep: 3.1, proj: "ice", mp: 125, rHp: 1.2, rMp: 3.6, alt: 1.15 },
 
   /* [SYSTEM: BESTIARY] a ordem é a ordem de força */
   hen: { key: "hen", pt: "Galinha", beast: true, lvlM: 2, nv: [1, 3], hp: 20, spd: 1.70, matilha: 1, range: .8, dmg: 2, cd: 1.4, armor: 0,
@@ -89,9 +89,11 @@ export const VOCS: VocKey[] = ["knight", "archer", "mage", "druid"];
 export const BEASTS: BeastKey[] = ["hen", "rat", "cow", "wolf", "boar", "spider", "bear", "orc", "lion", "troll", "minotaur", "cyclops", "dragon", "demon"];
 
 /* ---------- magia ---------- */
-export type SpellKey = "cura" | "investida" | "meteoro" | "triplo" | "chuva" | "certeiro" | "terremoto" | "trevas" | "nevasca";
+export type SpellKey = "cura" | "investida" | "meteoro" | "triplo" | "chuva" | "certeiro" | "terremoto" | "trevas" | "nevasca"
+  | "bumerangue" | "veneno" | "bolaFogo" | "relampago";
 export const CUSTO: Record<SpellKey, number> = {
-  cura: 32, investida: 26, meteoro: 55, triplo: 34, chuva: 42, certeiro: 16, terremoto: 20, trevas: 40, nevasca: 45,
+  cura: 32, investida: 26, meteoro: 55, triplo: 34, chuva: 42, certeiro: 16, terremoto: 24, trevas: 38, nevasca: 45,
+  bumerangue: 20, veneno: 22, bolaFogo: 30, relampago: 30,
 };
 /* Exaustão é de cada magia, com relógio próprio: uma nunca bloqueia a
    outra. Especial 10 s, curas 1 s, demais 2 s, poção 1 s. */
@@ -99,6 +101,7 @@ export const EXA: Record<string, number> = {
   investida: 10, triplo: 10, meteoro: 10, nevasca: 10,
   cura: 1, chuva: 1,
   terremoto: 2, trevas: 2, certeiro: 2,
+  bumerangue: 2, veneno: 2, bolaFogo: 2, relampago: 2,
   pocao: 1,
 };
 export interface SpellDef { nome: string; mira: boolean; alc?: number; so?: VocKey; desc: string }
@@ -122,6 +125,11 @@ export const POCAO = { hp: 100, mp: 50, pilha: 50, limiar: .34, limiarMp: .22 };
 export const VIGOR_MULT = 1.45;
 export const INVESTIDA_PRESSA = 3, INVESTIDA_CD = 22;
 export const PROVOCA_T = 5;
+/* magias de 2 s: lâmina que vai e volta, flecha envenenada e as duas
+   explosões pequenas (raio menor que o Meteoro, dano menor que Trevas) */
+export const BUMERANGUE = { alcance: 6, fator: 1.1, volta: .55 };
+export const VENENO = { fator: .95, dur: 6, tick: 1 };
+export const EXPLOSAO = { raio: 1.5, dano: 22, mag: 3.0, queda: .4 };
 
 export const SPELLS: Record<SpellKey, SpellDef> = {
   investida: { nome: "Investida", mira: false, so: "knight", desc: "Carga veloz até o alvo: golpe forte que atordoa." },
@@ -133,14 +141,19 @@ export const SPELLS: Record<SpellKey, SpellDef> = {
   chuva: { nome: "Chuva de cura", mira: true, alc: CHUVA_ALCANCE, so: "druid", desc: "Cura o grupo numa área." },
   cura: { nome: "Cura", mira: false, desc: "Restaura parte da própria vida." },
   certeiro: { nome: "Tiro certo", mira: false, so: "archer", desc: "Um disparo extra, barato, que nunca erra." },
+  bumerangue: { nome: "Lâmina bumerangue", mira: false, so: "knight", desc: "Arremessa a arma girando até 6 sqm: fere o alvo e quem estiver no caminho da volta." },
+  veneno: { nome: "Flecha envenenada", mira: false, so: "archer", desc: "Flecha com o dano normal que ainda envenena: tira vida a cada segundo por 6 s." },
+  bolaFogo: { nome: "Bola de fogo", mira: false, so: "mage", desc: "Explode no alvo e queima quem está em volta (área menor que o Meteoro)." },
+  relampago: { nome: "Relâmpago", mira: false, so: "druid", desc: "Um raio cai no alvo e a descarga elétrica atinge quem está perto." },
 };
-export const SPELL_ORDER: SpellKey[] = ["investida", "triplo", "meteoro", "trevas", "terremoto", "nevasca", "chuva", "cura", "certeiro"];
+export const SPELL_ORDER: SpellKey[] = ["investida", "triplo", "meteoro", "trevas", "terremoto", "nevasca", "chuva", "bumerangue", "veneno", "bolaFogo", "relampago", "cura", "certeiro"];
+export const NUM_SLOTS = 4;
 export const ESPECIAL: Record<VocKey, SpellKey> = { knight: "investida", archer: "triplo", mage: "meteoro", druid: "nevasca" };
 export const ATALHOS: Record<VocKey, SpellKey[]> = {
-  knight: ["investida", "cura", "terremoto"],
-  archer: ["triplo", "cura", "certeiro"],
-  mage: ["meteoro", "cura", "trevas"],
-  druid: ["nevasca", "cura", "chuva"],
+  knight: ["investida", "cura", "terremoto", "bumerangue"],
+  archer: ["triplo", "cura", "certeiro", "veneno"],
+  mage: ["meteoro", "cura", "trevas", "bolaFogo"],
+  druid: ["nevasca", "cura", "chuva", "relampago"],
 };
 export function magiasDe(kind: VocKey): SpellKey[] {
   return SPELL_ORDER.filter((k) => !SPELLS[k].so || SPELLS[k].so === kind);
@@ -282,9 +295,9 @@ export const FIRST_NAMES = ["Afonso", "Aldo", "Bento", "Brandão", "Corvo", "Dua
   "Mor", "Teresa", "Aldonça", "Beatriz", "Constança", "Leonor", "Mafalda"];
 
 export const VOC_DESC: Record<VocKey, string> = {
-  knight: "Linha de frente: espada, escudo e muita vida. Investida e Terremoto, que puxa as feras para si.",
-  archer: "Dano à distância com o arco longo. Tiro triplo e Tiro certo, que nunca erra.",
-  mage: "Poder bruto e frágil: Meteoro em área e Trevas em alvo único. Mantenha distância.",
-  druid: "Apoio do grupo: Nevasca que prende, Chuva de cura e magia de gelo.",
+  knight: "Linha de frente: espada, escudo e muita vida. Investida, Terremoto, que puxa as feras, e Lâmina bumerangue à distância.",
+  archer: "Dano à distância com o arco longo. Tiro triplo, Tiro certo, que nunca erra, e Flecha envenenada.",
+  mage: "Poder bruto e frágil: Meteoro e Bola de fogo em área, Trevas em alvo único. Mantenha distância.",
+  druid: "Apoio do grupo: Nevasca que prende, Chuva de cura, Relâmpago e magia de gelo.",
 };
 export const VOC_MATIZ: Record<VocKey, number> = { knight: 352, archer: 120, mage: 226, druid: 162 };

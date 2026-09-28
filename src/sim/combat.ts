@@ -2,7 +2,7 @@
    COMBATE — acerto, dano, morte, espólio, experiência, loot,
    projéteis, meteoros, ondas de fogo e o que cada monstro faz.
    ================================================================ */
-import { ACERTO_MAX, CHUVA_R, ESQUIVA, MET_R, NEVASCA, WORLD_REBORN, type KindDef } from "./data";
+import { ACERTO_MAX, BUMERANGUE, CHUVA_R, ESQUIVA, MET_R, NEVASCA, VENENO, WORLD_REBORN, type KindDef } from "./data";
 import { avisoDe, ferirVisual, fx, tremer, ui } from "./fx";
 import { cabe, corItem, darItem, equiparSeQuiser, itemAleatorio, nomeItem, pocaoItem, recontar } from "./items";
 import { blockedPt, losU, queryRadius, queryRadius2, QBUF, QBUF2 } from "./map";
@@ -236,13 +236,14 @@ const projPool: Projetil[] = [];
 let projId = 1;
 export function alturaTiro(K: KindDef) { return K.alt * (K.beast ? .75 : .72); }
 export function shoot(u: Unit, t: Unit, kind: Projetil["kind"], dmg: number, raio = 0, certo = false) {
-  const sp = kind === "arrow" ? 22 : kind === "bola" ? 14 : 16;
+  const sp = kind === "arrow" || kind === "veneno" ? 22 : kind === "bola" || kind === "bolaFogo" ? 14 : kind === "lamina" ? 12 : kind === "raio" ? 24 : 16;
   const d = Math.max(.5, dist(u.x, u.y, t.x, t.y));
   const p = projPool.pop() || ({} as Projetil);
   p.x = u.x; p.y = u.y; p.tx = t.x; p.ty = t.y; p.d0 = d; p.sp = sp;
   p.dirx = (t.x - u.x) / d; p.diry = (t.y - u.y) / d;
   p.kind = kind; p.dmg = dmg; p.team = u.team; p.src = u; p.tgt = t; p.z = 0; p.raio = raio;
-  p.certo = certo ? 1 : 0;
+  p.certo = certo ? 1 : 0; p.volta = 0; p.giro = 0;
+  if (p.ja) p.ja.length = 0; else p.ja = [];
   p.h0 = kind === "bola" ? alturaTiro(u.K) * 1.05 : alturaTiro(u.K);
   p.h1 = t.K.alt * .55;
   p.id = projId++;
@@ -259,8 +260,25 @@ export function updateProjectiles(DT: number) {
     const passo = p.sp * DT;
     if (d > .001) { p.dirx = dx / d; p.diry = dy / d; }
     p.z = Math.sin(Math.PI * clamp(1 - d / p.d0, 0, 1)) * (p.kind === "arrow" ? .5 : .3);
+    /* lâmina voltando: corta quem estiver no caminho, uma vez cada */
+    if (p.kind === "lamina" && p.volta && p.src) {
+      const m = queryRadius(p.x, p.y, .75);
+      for (let k = 0; k < m; k++) {
+        const e = QBUF[k];
+        if (e === p.src || e.dead || !inimigo(p.src, e) || p.ja.indexOf(e.id) >= 0) continue;
+        p.ja.push(e.id);
+        golpe(p.src, e, p.dmg, false, true);
+      }
+    }
     if (d <= passo || d < .35) {
-      if (p.kind === "bola") {
+      if (p.kind === "lamina" && !p.volta && p.src && !p.src.dead) {
+        if (t && !t.dead) { p.ja.push(t.id); golpe(p.src, t, p.dmg, false, true); fx({ t: "bits", x: t.x, y: t.y, c: "#e8eef2", n: 8, spd: 2.2, h: .7 }); }
+        p.volta = 1; p.tgt = p.src; p.dmg *= BUMERANGUE.volta;
+        p.d0 = Math.max(.5, dist(p.x, p.y, p.src.x, p.src.y));
+        const h = p.h0; p.h0 = p.h1; p.h1 = h;
+        continue;
+      }
+      if (p.kind === "bola" || p.kind === "bolaFogo" || p.kind === "raio") {
         const m = queryRadius(p.x, p.y, p.raio);
         for (let k = 0; k < m; k++) {
           const e = QBUF[k];
@@ -268,9 +286,21 @@ export function updateProjectiles(DT: number) {
           const dd = dist(e.x, e.y, p.x, p.y);
           hit(p.src, e, p.dmg * (1 - dd / p.raio * .45), true);
         }
-        fx({ t: "impact", x: p.x, y: p.y, kind: "bola" });
-        fx({ t: "boom", x: p.x, y: p.y, c: "#ff8a2a", r: p.raio, life: .5, kind: "fire" });
-        fx({ t: "scorch", x: p.x, y: p.y, life: 3, r: p.raio * .7 });
+        const raio = p.kind === "raio";
+        fx({ t: "impact", x: p.x, y: p.y, kind: p.kind === "bola" ? "bola" : raio ? "raio" : "bolaFogo" });
+        fx({ t: "boom", x: p.x, y: p.y, c: raio ? "#bfe4ff" : "#ff8a2a", r: p.raio, life: .5, kind: raio ? "ice" : "fire" });
+        if (!raio) fx({ t: "scorch", x: p.x, y: p.y, life: 3, r: p.raio * .7 });
+      } else if (p.kind === "lamina") {
+        /* voltou para a mão */
+      } else if (p.kind === "veneno" && t && !t.dead && p.src) {
+        if (acerta(p.src, t)) {
+          hit(p.src, t, p.dmg, false);
+          if (!t.dead) {
+            t.venDps = p.dmg * VENENO.fator / VENENO.dur;
+            t.venAte = W.simTime + VENENO.dur; t.venTick = W.simTime + VENENO.tick; t.venSrc = p.src;
+            fx({ t: "bits", x: t.x, y: t.y, c: "#7fe05a", n: 12, spd: 1.4, h: .7 });
+          }
+        } else { fx({ t: "miss", u: t }); marcar(p.src, t); }
       } else if (t && !t.dead && p.src) {
         if (p.certo) { marcar(p.src, t); hit(p.src, t, p.dmg, false); }
         else golpe(p.src, t, p.dmg, p.kind !== "arrow");

@@ -1,6 +1,8 @@
 /* ================================================================
    Mapa, cidade, caminho (A*), linha de visão, colisão e grade espacial.
    `tileCol`: 0..3 grama, 4..5 calçada da cidade, 200 água.
+   Só água, obelisco, balcões e barracas são sólidos. Árvore e pedra
+   ficam em `tronco`: tapam a visão e desviam quem passa, sem travar.
    ================================================================ */
 import { W, idx, inb, type Prop } from "./state";
 import { clamp, dist, dist2, hash2, ri, rnd, rr, vnoise } from "./rng";
@@ -10,11 +12,12 @@ import { FAUNA } from "./data";
 export function buildMap() {
   const N = W.N;
   W.solid = new Uint8Array(N * N);
+  W.tronco = new Uint8Array(N * N);
   W.blockLOS = new Uint8Array(N * N);
   W.tileCol = new Uint8Array(N * N);
   W.pzMask = new Uint8Array(N * N);
   W.props = [];
-  const { solid, blockLOS, tileCol, props } = W;
+  const { solid, tronco, blockLOS, tileCol, props } = W;
   const ox = rnd() * 900, oy = rnd() * 900;
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     const n = vnoise(x * .11 + ox, y * .11 + oy) * .66 + vnoise(x * .31 + ox, y * .31 + oy) * .34;
@@ -41,8 +44,8 @@ export function buildMap() {
     const cx = ri(2, N - 3), cy = ri(2, N - 3), n = ri(2, 6);
     for (let k = 0; k < n; k++) {
       const x = cx + ri(-2, 2), y = cy + ri(-2, 2);
-      if (!inb(x, y) || solid[idx(x, y)]) continue;
-      solid[idx(x, y)] = 1; blockLOS[idx(x, y)] = 1;
+      if (!inb(x, y) || solid[idx(x, y)] || tronco[idx(x, y)]) continue;
+      tronco[idx(x, y)] = 1; blockLOS[idx(x, y)] = 1;
       props.push({ t: "tree", x, y, s: hash2(x * 7, y * 13) });
     }
   }
@@ -50,8 +53,8 @@ export function buildMap() {
   const rocks = Math.round(N * N * .004 * .45);
   for (let i = 0; i < rocks; i++) {
     const x = ri(1, N - 2), y = ri(1, N - 2);
-    if (solid[idx(x, y)] || rnd() < .35) continue;
-    solid[idx(x, y)] = 1; blockLOS[idx(x, y)] = 1;
+    if (solid[idx(x, y)] || tronco[idx(x, y)] || rnd() < .35) continue;
+    tronco[idx(x, y)] = 1; blockLOS[idx(x, y)] = 1;
     props.push({ t: "rock", x, y, s: hash2(x * 3, y * 5) });
   }
   /* o sorteio das antigas moitas continua: a mesma semente da v54 gera o
@@ -76,7 +79,7 @@ export function emPZ(x: number, y: number) {
   return gx >= 0 && gy >= 0 && gx < N && gy < N && W.pzMask[gy * N + gx] === 1;
 }
 export function construirCidade(paleta: (h: number, s: number) => { h: number; c: string; lo: string; hi: string }) {
-  const N = W.N, { solid, blockLOS, tileCol, pzMask } = W;
+  const N = W.N, { solid, tronco, blockLOS, tileCol, pzMask } = W;
   const m = Math.max(CID_R + 7, N * .16);
   const cx = Math.floor(rr(m, N - m)) + .5, cy = Math.floor(rr(m, N - m)) + .5;
   const R2 = CID_R + 2.2;
@@ -85,7 +88,7 @@ export function construirCidade(paleta: (h: number, s: number) => { h: number; c
     if (!inb(x, y)) continue;
     const d = dist(x + .5, y + .5, cx, cy), i = idx(x, y);
     if (d > R2) continue;
-    solid[i] = 0; blockLOS[i] = 0;
+    solid[i] = 0; tronco[i] = 0; blockLOS[i] = 0;
     if (tileCol[i] === 200) tileCol[i] = 1;
     if (d <= CID_R) { tileCol[i] = ((x + y) & 1) ? 4 : 5; pzMask[i] = 1; }
   }
@@ -127,12 +130,12 @@ export function npcPerto(u: Unit, id?: string) {
 export function npcDe(id: string) { for (const n of W.cidade.npcs) if (n.id === id) return n; return null as unknown as Npc; }
 
 function clearArea(cx: number, cy: number, r: number) {
-  const { solid, blockLOS, tileCol } = W;
+  const { solid, tronco, blockLOS, tileCol } = W;
   for (let y = Math.floor(cy - r); y <= cy + r; y++) for (let x = Math.floor(cx - r); x <= cx + r; x++) {
     if (!inb(x, y)) continue;
     if (dist(x, y, cx, cy) > r) continue;
     if (solid[idx(x, y)]) {
-      solid[idx(x, y)] = 0; blockLOS[idx(x, y)] = 0;
+      solid[idx(x, y)] = 0; tronco[idx(x, y)] = 0; blockLOS[idx(x, y)] = 0;
       if (tileCol[idx(x, y)] >= 200) tileCol[idx(x, y)] = 1;
       W.props = W.props.filter((p) => !(p.x === x && p.y === y && p.t !== "obelisco" && p.t !== "barraca" && p.t !== "lampiao"));
     }
@@ -202,20 +205,82 @@ function hpop() {
 }
 const NB = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [-1, -1, 1.414]];
 
-export function nearestFree(x: number, y: number): [number, number] {
-  const N = W.N, { solid } = W;
-  x = clamp(Math.round(x), 0, N - 1); y = clamp(Math.round(y), 0, N - 1);
-  if (!solid[idx(x, y)]) return [x, y];
-  for (let r = 1; r < 9; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+/* `semPz`: para criatura e para quem tem trava, o calçamento também é parede */
+export function nearestFree(x: number, y: number, semPz = false): [number, number] {
+  const N = W.N, { solid, pzMask } = W;
+  x = clamp(Math.floor(x), 0, N - 1); y = clamp(Math.floor(y), 0, N - 1);
+  const ok = (i: number) => !solid[i] && !(semPz && pzMask[i]);
+  if (ok(idx(x, y))) return [x, y];
+  const R = semPz ? 14 : 9;
+  for (let r = 1; r < R; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
     if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
     const nx = x + dx, ny = y + dy;
-    if (inb(nx, ny) && !solid[idx(nx, ny)]) return [nx, ny];
+    if (inb(nx, ny) && ok(idx(nx, ny))) return [nx, ny];
   }
   return [x, y];
 }
-export function findPath(sx: number, sy: number, tx: number, ty: number): Pt[] | null {
-  const N = W.N, { solid } = W;
-  const s = nearestFree(sx, sy), t = nearestFree(tx, ty);
+/* reta livre para um corpo de raio r: testa o eixo e as duas bordas,
+   então quem vai direto não raspa na margem da água nem na PZ */
+export function retaLivre(x0: number, y0: number, x1: number, y1: number, r: number, semPz: boolean) {
+  const dx = x1 - x0, dy = y1 - y0, d = Math.hypot(dx, dy);
+  if (d < .3) return true;
+  if (d > 16) return false;
+  const nx = -dy / d * r * .9, ny = dx / d * r * .9;
+  const steps = Math.ceil(d * 2.5), N = W.N, { solid, pzMask } = W;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps, px = x0 + dx * t, py = y0 + dy * t;
+    for (let k = -1; k <= 1; k++) {
+      const gx = (px + nx * k) | 0, gy = (py + ny * k) | 0;
+      if (gx < 0 || gy < 0 || gx >= N || gy >= N) return false;
+      const j = gy * N + gx;
+      if (solid[j] || (semPz && pzMask[j])) return false;
+    }
+  }
+  return true;
+}
+/* árvore e pedra empurram de leve para fora (nunca prendem): o corpo
+   pode encostar, mas desliza em volta do tronco */
+export function empurraTroncos(x: number, y: number, r: number, out: { x: number; y: number }) {
+  out.x = 0; out.y = 0;
+  const N = W.N, T = W.tronco, gx = x | 0, gy = y | 0;
+  for (let ty = gy - 1; ty <= gy + 1; ty++) for (let tx = gx - 1; tx <= gx + 1; tx++) {
+    if (tx < 0 || ty < 0 || tx >= N || ty >= N) continue;
+    const v = T[ty * N + tx];
+    if (!v) continue;
+    const cx = tx + .5, cy = ty + .5, rr0 = r * .7 + (v === 1 ? .2 : .28);
+    const ddx = x - cx, ddy = y - cy, d2 = ddx * ddx + ddy * ddy;
+    if (d2 >= rr0 * rr0) continue;
+    const d = Math.sqrt(d2) || .001, pen = rr0 - d;
+    out.x += ddx / d * pen; out.y += ddy / d * pen;
+  }
+  return out;
+}
+/* olha até 1,5 sqm à frente: tronco na rota vira um desvio lateral,
+   para o lado em que já dá para passar (sem parar de frente para ele) */
+export function desviarTroncos(u: { x: number; y: number; id: number }, r: number, dx: number, dy: number, out: { x: number; y: number }) {
+  out.x = 0; out.y = 0;
+  const l = Math.hypot(dx, dy);
+  if (l < .02) return out;
+  const fx = dx / l, fy = dy / l, px = -fy, py = fx;
+  const N = W.N, T = W.tronco, gx = (u.x + fx * .8) | 0, gy = (u.y + fy * .8) | 0;
+  for (let ty = gy - 1; ty <= gy + 1; ty++) for (let tx = gx - 1; tx <= gx + 1; tx++) {
+    if (tx < 0 || ty < 0 || tx >= N || ty >= N) continue;
+    const v = T[ty * N + tx];
+    if (!v) continue;
+    const rx = tx + .5 - u.x, ry = ty + .5 - u.y;
+    const frente = rx * fx + ry * fy;
+    if (frente < -.1 || frente > 1.5) continue;
+    const lado = rx * px + ry * py, livre = r * .7 + (v === 1 ? .2 : .28) + .14;
+    if (Math.abs(lado) >= livre) continue;
+    const s = Math.abs(lado) < .04 ? ((u.id & 1) ? 1 : -1) : (lado > 0 ? -1 : 1);
+    const w = (livre - Math.abs(lado)) / livre * (1 - Math.max(0, frente) / 1.5) * 2.2;
+    out.x += px * s * w; out.y += py * s * w;
+  }
+  return out;
+}
+export function findPath(sx: number, sy: number, tx: number, ty: number, semPz = false): Pt[] | null {
+  const N = W.N, { solid, pzMask, tronco } = W;
+  const s = nearestFree(sx, sy), t = nearestFree(tx, ty, semPz);
   const si = idx(s[0], s[1]), ti = idx(t[0], t[1]);
   if (si === ti) return [{ x: t[0] + .5, y: t[1] + .5 }];
   stampV++; hn = 0;
@@ -224,7 +289,8 @@ export function findPath(sx: number, sy: number, tx: number, ty: number): Pt[] |
   const oct = (x: number, y: number) => { const dx = Math.abs(x - hx), dy = Math.abs(y - hy); return (dx + dy) + (1.414 - 2) * Math.min(dx, dy); };
   hpush(si, oct(s[0], s[1]));
   let best = si, bestH = oct(s[0], s[1]), n = 0;
-  const CAP = 2600;
+  const CAP = Math.max(2600, N * 34);
+  const livre = (j: number) => !solid[j] && !(semPz && pzMask[j] && j !== si);
   while (hn && n < CAP) {
     const cur = hpop(); n++;
     if (cur === ti) { best = ti; break; }
@@ -235,9 +301,10 @@ export function findPath(sx: number, sy: number, tx: number, ty: number): Pt[] |
       const nx = cx + NB[k][0], ny = cy + NB[k][1];
       if (!inb(nx, ny)) continue;
       const j = idx(nx, ny);
-      if (solid[j]) continue;
-      if (k > 3 && (solid[idx(cx + NB[k][0], cy)] || solid[idx(cx, cy + NB[k][1])])) continue;
-      const ng = g + NB[k][2];
+      if (!livre(j)) continue;
+      if (k > 3 && (!livre(idx(cx + NB[k][0], cy)) || !livre(idx(cx, cy + NB[k][1])))) continue;
+      /* passar rente a tronco custa um pouco: a rota prefere o campo aberto */
+      const ng = g + NB[k][2] + (tronco[j] ? .6 : 0);
       if (stamp[j] === stampV && gS[j] <= ng) continue;
       stamp[j] = stampV; gS[j] = ng; came[j] = cur;
       hpush(j, ng + oct(nx, ny) * 1.06);

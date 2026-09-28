@@ -3,7 +3,7 @@
    [SYSTEM: PREFS] — o mesmo formato .json da v54 ("mesa-de-guerra"):
    fichas e mundos salvos na versão antiga abrem aqui.
    ================================================================ */
-import { ATALHOS, KINDS, PERFIL_NOME, PLANOS, POCAO, PZ_LUTA, SPELLS, WORLD_REBORN, type AtqModo, type SpellKey, type VocKey } from "./data";
+import { ATALHOS, NUM_SLOTS, KINDS, PERFIL_NOME, PLANOS, POCAO, PZ_LUTA, SPELLS, WORLD_REBORN, type AtqModo, type SpellKey, type VocKey } from "./data";
 import { darItem, ehPocao, novoItem, pocaoItem, recontar, servePara } from "./items";
 import { BASES, COFRE_N, MOCHILA_N, SLOTS } from "./itemsData";
 import { emPZ, nearestFree } from "./map";
@@ -16,7 +16,7 @@ import { corGuilda, corLivre, corPorMatiz, makeUnit } from "./unit";
 import { entrarParty, iniciaMundoUnit, novaParty, povoarZonas, sqBase } from "./world";
 import { atalhosPadrao } from "./spells";
 import { FAUNA } from "./data";
-import { SETUP, prepararMundo, terminarInicio, assumir } from "./session";
+import { SETUP, TAMANHO_MEGA, prepararMundo, terminarInicio, assumir } from "./session";
 import { soltarPreso } from "./ai";
 
 /* ---------- preferências no aparelho ---------- */
@@ -110,9 +110,10 @@ export function aplicarFicha(u: Unit, f: any) {
   }
   u.ouro = Math.max(0, f.ouro | 0); u.banco = Math.max(0, f.banco | 0);
   const pad = atalhosPadrao(kind);
-  u.slots = Array.isArray(f.slots) && f.slots.length === 3
-    ? f.slots.map((s: string) => SPELLS[s as SpellKey] && (!SPELLS[s as SpellKey].so || SPELLS[s as SpellKey].so === kind) ? s as SpellKey : null) as SpellKey[] : pad;
-  for (let i = 0; i < 3; i++) if (!u.slots![i]) u.slots![i] = pad[i];
+  const valida = (s: string) => SPELLS[s as SpellKey] && (!SPELLS[s as SpellKey].so || SPELLS[s as SpellKey].so === kind) ? s as SpellKey : null;
+  u.slots = Array.isArray(f.slots) && f.slots.length >= 3 ? f.slots.slice(0, NUM_SLOTS).map(valida) as SpellKey[] : pad;
+  /* ficha de 3 casas (versões antigas): a quarta recebe a magia nova da vocação */
+  for (let i = 0; i < NUM_SLOTS; i++) if (!u.slots![i]) u.slots![i] = u.slots!.indexOf(pad[i]) < 0 ? pad[i] : pad.find((k) => u.slots!.indexOf(k) < 0) || pad[i];
   u.kills = Math.max(0, f.kills | 0); u.pkKills = Math.max(0, f.pkKills | 0);
   u.injustas = Math.max(0, f.injustas | 0); u.injustaUlt = +f.injustaUlt || 0; u.vermelhaAte = +f.vermelhaAte || 0;
   u.skull = f.caveira === "red" ? "red" : f.caveira === "white" ? "white" : null;
@@ -164,7 +165,7 @@ export function carregarMundo(m: any) {
   const s = m.setup || {};
   SETUP.livre = s.livre !== false;
   SETUP.guildas = clamp(s.guildas | 0 || 2, 2, 4);
-  SETUP.tamanho = clamp(s.tamanho | 0 || 72, 48, 180);
+  SETUP.tamanho = clamp(s.tamanho | 0 || 72, 48, TAMANHO_MEGA);
   SETUP.monstros = clamp(s.monstros | 0 || 220, 40, 400);
   prepararMundo(m.semente >>> 0);
   const nT = W.worldLivre ? 1 : W.guildasN;

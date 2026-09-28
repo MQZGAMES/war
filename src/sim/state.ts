@@ -5,8 +5,10 @@ export interface Prop { t: "tree" | "rock" | "water" | "obelisco" | "lampiao" | 
 
 export interface Projetil {
   x: number; y: number; tx: number; ty: number; d0: number; sp: number; dirx: number; diry: number;
-  kind: "arrow" | "fire" | "ice" | "dark" | "bola"; dmg: number; team: number; src: Unit | null; tgt: Unit | null;
+  kind: "arrow" | "fire" | "ice" | "dark" | "bola" | "lamina" | "veneno" | "bolaFogo" | "raio"; dmg: number; team: number; src: Unit | null; tgt: Unit | null;
   z: number; raio: number; certo: number; h0: number; h1: number; id: number;
+  /* lâmina bumerangue: 1 depois de acertar, voltando para quem lançou */
+  volta: number; giro: number; ja: number[];
 }
 export interface Meteoro {
   x: number; y: number; team: number; src: Unit | null; t: number; dur: number; dano: number;
@@ -21,6 +23,8 @@ export interface Onda {
 export const W = {
   N: 72,
   solid: new Uint8Array(0),
+  /* tronco de árvore (1) ou pedra (2): desvia quem passa, mas não trava */
+  tronco: new Uint8Array(0),
   blockLOS: new Uint8Array(0),
   tileCol: new Uint8Array(0),
   pzMask: new Uint8Array(0),

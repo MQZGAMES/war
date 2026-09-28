@@ -3,6 +3,8 @@ import { ACERTO_BASE, ACERTO_BICHO, FAUNA, FIRST_NAMES, GUILDA_H, KINDS, POSTURA
 import { clamp, rnd, rr } from "./rng";
 import { W } from "./state";
 import { sorteiaPlano } from "./stats";
+import { nearestFree } from "./map";
+import { pzAtiva } from "./pk";
 import type { Unit } from "./types";
 
 /* ---------- [SYSTEM: COR] ---------- */
@@ -19,10 +21,19 @@ export function hsl2hex(h: number, s: number, l: number) {
 export function paleta(h: number, s: number, dl = 0): Paleta {
   return { h: Math.round(h), c: hsl2hex(h, s, 55 + dl), lo: hsl2hex(h, s * .9, 24 + dl * .5), hi: hsl2hex(h, Math.min(100, s + 8), 74 + dl * .4) };
 }
-export const CORES_FICHA = [0, 18, 36, 52, 78, 120, 158, 184, 204, 226, 252, 280, 308, 334].map((h) => paleta(h, 68));
-export function corLivre() { return paleta(Math.floor(rnd() * 360), 58 + rnd() * 20, rr(-4, 4)); }
+/* roupas sem matiz: branca com preto e preta com detalhes brancos.
+   `h` fora de 0..359 identifica a paleta ao salvar e ao carregar */
+export const BRANCO_PRETO: Paleta = { h: 400, c: "#e8e5dc", lo: "#1c1c21", hi: "#ffffff" };
+export const PRETO_BRANCO: Paleta = { h: 401, c: "#26262c", lo: "#131317", hi: "#f2f0ea" };
+export const CORES_FICHA = [...[0, 18, 36, 52, 78, 120, 158, 184, 204, 226, 252, 280, 308, 334].map((h) => paleta(h, 68)), BRANCO_PRETO, PRETO_BRANCO];
+export function corLivre() {
+  const r = rnd();
+  if (r < .05) return BRANCO_PRETO;
+  if (r < .1) return PRETO_BRANCO;
+  return paleta(Math.floor(rnd() * 360), 58 + rnd() * 20, rr(-4, 4));
+}
 export function corGuilda(t: number) { return paleta((GUILDA_H[t] + rr(-12, 12) + 360) % 360, 60 + rr(-8, 10), rr(-7, 7)); }
-export function corPorMatiz(h: number) { return paleta(h, 68); }
+export function corPorMatiz(h: number) { return h === 400 ? BRANCO_PRETO : h === 401 ? PRETO_BRANCO : paleta(h, 68); }
 
 /* ---------- nomes: repetido só depois de esgotar a lista ---------- */
 let namePool: string[] = [], nameI = 0;
@@ -39,7 +50,7 @@ export function nextName() {
   return volta ? n + " " + (volta + 1) : n;
 }
 
-export const TRAVA_TESTE = 5, TRAVA_MIN = .55, TRAVA_VOLTA = 6;
+export const TRAVA_TESTE = 3, TRAVA_MIN = .45, TRAVA_VOLTA = 8;
 
 export function makeUnit(team: number, kind: KindKey, x: number, y: number): Unit {
   const K = KINDS[kind];
@@ -86,6 +97,7 @@ export function makeUnit(team: number, kind: KindKey, x: number, y: number): Uni
     refil: null, refilEspera: 0, refilAvisoT: 0,
     xpMult: 1, zona: null, bando: null, coleira: 0, remover: false, _imp: 0,
     hitX: 0, hitY: 0, castT: 0, castK: "",
+    venDps: 0, venAte: 0, venTick: 0, venSrc: null,
   };
 }
 
@@ -99,6 +111,14 @@ export function novaPostura(u: Unit) {
 export function goTo(u: Unit, x: number, y: number, key: string) {
   const g = u._g || (u._g = { x: 0, y: 0 });
   g.x = clamp(x, .6, W.N - .6); g.y = clamp(y, .6, W.N - .6);
+  /* destino na água, ou no calçamento para quem não pode entrar, vira o
+     ponto livre mais próximo: segue até a margem em vez de empacar */
+  const i = (g.y | 0) * W.N + (g.x | 0);
+  const semPz = !u.pz && (u.beast || pzAtiva(u));
+  if (W.solid[i] || (semPz && W.pzMask[i])) {
+    const f = nearestFree(g.x, g.y, semPz);
+    g.x = f[0] + .5; g.y = f[1] + .5;
+  }
   u.goal = g;
   const kx = (g.x * .6) | 0, ky = (g.y * .6) | 0;
   if (key !== u.goalKey || kx !== u.gkx || ky !== u.gky) { u.goalKey = key; u.gkx = kx; u.gky = ky; u.repath = 0; }

@@ -103,6 +103,9 @@ const R: Record<string, Receita> = {
   moedas: (t, v) => { for (let i = 0; i < 3; i++) osc("sine", 2200 + Math.random() * 900, 2000, t + i * .06, .14, .06 * v, sfx); },
   loot: (t, v) => { [880, 1175, 1568].forEach((f, i) => osc("sine", f, f, t + i * .05, .25, .07 * v, sfx)); },
   grupo: (t, v) => { osc("triangle", 660, 660, t, .18, .1 * v, sfx); osc("triangle", 880, 880, t + .12, .25, .1 * v, sfx); },
+  trovao: (t, v) => { chiado(t, .08, .6 * v, "highpass", 2500, 6000); chiado(t + .04, .7, .55 * v, "lowpass", 1600, 90); osc("sine", 90, 35, t + .03, .6, .5 * v, sfx); },
+  lamina: (t, v) => { for (let i = 0; i < 4; i++) chiado(t + i * .07, .08, .16 * v, "bandpass", 1500 + i * 300, 3200, 2); },
+  veneno: (t, v) => { for (let i = 0; i < 4; i++) osc("sine", 260 + Math.random() * 180, 520, t + i * .05, .07, .07 * v, sfx); },
   equipar: (t, v) => { chiado(t, .08, .25 * v, "bandpass", 2400, 1200, 3); osc("sine", 1900, 1700, t + .02, .12, .05 * v, sfx); },
 };
 
