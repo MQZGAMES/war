@@ -18,7 +18,7 @@ import { Ico } from "./icons";
 import { DoisToques, Lin, Passo, Seg, SimNao, clique, recusa } from "./comp";
 import { retratoDe } from "../render/portrait";
 import { conta, enviadoEm, metaNuvem, nuvemAtiva, nuvemOcupada } from "../net/nuvem";
-import { abrirDaNuvem, dataNuvem, haQuanto, salvarNaNuvem } from "./conta";
+import { abrirPersonagem, dataNuvem, haQuanto, heroiNaConta, salvarNaNuvem } from "./conta";
 
 /* ---------- título ---------- */
 export function Titulo() {
@@ -46,7 +46,7 @@ export function Titulo() {
           {daNuvem && !G.ctrl && (
             <button class="go sec" disabled={abrindo} onClick={() => {
               iniciarAudio(); clique(); setAbrindo(true);
-              abrirDaNuvem().catch((err) => aviso("A partida da nuvem não abriu: " + (err as Error).message, "#e0685a")).finally(() => setAbrindo(false));
+              abrirPersonagem(nv!.id).catch((err) => aviso("A partida da nuvem não abriu: " + (err as Error).message, "#e0685a")).finally(() => setAbrindo(false));
             }}>{abrindo ? "Baixando…" : "Continuar"}<small>{(nv!.heroi ? nv!.heroi + " · " : "") + "nível " + (nv!.nivel || "?") + " · nuvem · " + dataNuvem(nv!.quando)}</small></button>
           )}
           {m && !daNuvem && !G.ctrl && (
@@ -64,7 +64,7 @@ export function Titulo() {
             <button class="go sec" onClick={() => { clique(); irPara("mundo"); }}><Ico n="mundo" s={20} />Regras</button>
             <button class="go sec" onClick={() => { clique(); irPara("ajustes"); }}><Ico n="engrenagem" s={20} />Ajustes</button>
           </div>
-          {nuvemAtiva && <button class="go sec" onClick={() => { clique(); irPara("conta"); }}><Ico n="nuvem" s={20} />{conta.value ? "Nuvem · " + conta.value.usuario : "Entrar para salvar na nuvem"}</button>}
+          {nuvemAtiva && <button class="go sec" onClick={() => { clique(); irPara("conta"); }}><Ico n="nuvem" s={20} />{conta.value ? "Personagens · " + conta.value.email : "Entrar para salvar na nuvem"}</button>}
           <p class="rodape">v1.0 · toque, teclado e mouse · funciona offline</p>
         </div>
       </div>
@@ -104,6 +104,7 @@ export function Heroi() {
     const u = criarHeroi(voc, n, sexo);
     retrato.value = retratoDe(u);
     irPara("jogo");
+    void heroiNaConta();
     if (!PREF.ajudaVista) aviso("Arraste para andar · toque num inimigo para atacar · a mochila abre os painéis", "#f0cf6e");
   };
   const barra = (v: number) => ({ "--w": Math.round(v * 100) + "%" } as never);
@@ -156,7 +157,7 @@ const AJ: [string, string, preact.ComponentChildren][] = [
   ["caveira", "Caveiras e trava", <>Agredir quem não te atacou dá caveira branca e tranca a cidade por 30 s; matar por agressão tranca 2 min. Três mortes injustas em uma hora trazem a caveira vermelha. Bater em criatura nunca trava.</>],
   ["coracao", "Morte", <>Perde 1 nível, a mochila inteira e o ouro fora do banco, com 10% de chance de perder um item vestido. Volta ao obelisco em 9 s. Deposite no Banqueiro antes de arriscar.</>],
   ["mochila", "Automação", <>Na mochila: auto cura, auto refil (repõe poções, vende o loot, compra equipamento e forja no Ferreiro), auto equipar, modos de auto ataque, atributos por nível (seguem a proporção que você pôs à mão), equipe e ficha. O personagem se vira mesmo quando você só assiste.</>],
-  ["nuvem", "Nuvem", <>Crie uma conta com usuário e senha em Nuvem. A partida sobe sozinha a cada 5 minutos de jogo e ao fechar o app; no menu, Salvar na nuvem sobe na hora. Em outro aparelho, entre com a mesma conta e toque em Continuar.</>],
+  ["nuvem", "Nuvem", <>Crie uma conta com e-mail e senha em Nuvem: ela guarda até 10 personagens, cada um com a sua partida, e todo herói novo criado com a conta aberta entra na lista. A partida sobe sozinha a cada 5 minutos e ao fechar o app; no menu, Salvar na nuvem sobe na hora. Em outro aparelho, entre com o mesmo e-mail e escolha o personagem.</>],
   ["equipe", "Equipe", <>Na aba Equipe, convide quem estiver sem grupo. Liderar faz o grupo seguir você: cavaleiros à frente, o resto atrás, todos no seu alvo.</>],
   ["olho", "Câmera", <>Pinça ou roda do mouse dá zoom. Com a câmera em Livre, o dedo arrasta a vista; botão direito do mouse também. <kbd>Esc</kbd> ou <kbd>Espaço</kbd> abre o menu e pausa. O dia vira noite a cada nove minutos.</>],
 ];
@@ -212,9 +213,9 @@ export function Menu() {
               const el = e.currentTarget as HTMLElement;
               if (!G.ctrl) { recusa(el); setMsg("Assuma um herói antes de salvar na nuvem."); return; }
               clique(); setMsg("Enviando para a nuvem…");
-              salvarNaNuvem().then(() => setMsg("Partida salva na nuvem (" + conta.value!.usuario + ").")).catch((err) => { recusa(el); setMsg("A nuvem não confirmou: " + (err as Error).message + "."); });
+              salvarNaNuvem().then(() => setMsg("Partida de " + G.ctrl!.name + " salva na conta.")).catch((err) => { recusa(el); setMsg("A nuvem não confirmou: " + (err as Error).message + "."); });
             }}><Ico n="nuvem" s={20} /><b>Salvar na nuvem</b><small>{nuvemOcupada.value ? "enviando…" : enviadoEm.value ? "última: " + haQuanto(enviadoEm.value) : "sozinha a cada 5 min"}</small></button>}
-            {nuvemAtiva && <button class={"cb" + (conta.value ? "" : " cheio")} onClick={() => { clique(); irPara("conta"); }}><Ico n="nuvem" s={20} /><b>{conta.value ? "Conta" : "Nuvem"}</b><small>{conta.value ? conta.value.usuario + (metaNuvem.value ? " · " + dataNuvem(metaNuvem.value.quando) : "") : "entre para levar a partida a outro aparelho"}</small></button>}
+            {nuvemAtiva && <button class={"cb" + (conta.value ? "" : " cheio")} onClick={() => { clique(); irPara("conta"); }}><Ico n="nuvem" s={20} /><b>{conta.value ? "Personagens" : "Nuvem"}</b><small>{conta.value ? conta.value.email : "entre para levar a partida a outro aparelho"}</small></button>}
           </div>
           <input ref={arq} type="file" accept=".json,application/json" hidden onChange={() => {
             const f = arq.current && arq.current.files && arq.current.files[0];

@@ -16,6 +16,7 @@ import { iniciarEntrada } from "./game/input";
 import { iniciarLaco, laco } from "./game/loop";
 import { carregarPref, ganchoSave, PREF } from "./sim/save";
 import { enviarMundo, iniciarNuvem } from "./net/nuvem";
+import * as NUVEM from "./net/nuvem";
 import { startWorld, criarHeroi, SETUP } from "./sim/session";
 import { fotoPose } from "./render/portrait";
 import { novoQuadro, PERF, step } from "./sim/step";
@@ -45,7 +46,7 @@ function iniciar() {
   iniciarLaco();
   ganchoSave.aoSalvar = (m, modo) => { void enviarMundo(m, modo); };
   void iniciarNuvem().then((e) => { if (e) aviso(e, "#e0685a"); });
-  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__mesa = { engine, G, W, criarHeroi, irPara, laco, tick, abrirNpc, PREF, step, SETUP, startWorld, fotoPose, novoQuadro, PERF, MERCADO };
+  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__mesa = { engine, G, W, criarHeroi, irPara, laco, tick, abrirNpc, PREF, step, SETUP, startWorld, fotoPose, novoQuadro, PERF, MERCADO, NUVEM };
   const boot = document.getElementById("boot");
   if (boot) { boot.classList.add("fora"); setTimeout(() => boot.remove(), 700); }
   /* PWA: guarda o jogo para abrir offline (não no .html único nem no dev) */

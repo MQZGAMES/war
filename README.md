@@ -43,10 +43,10 @@ A pasta `dist/` pode ser publicada em qualquer hospedagem estática (GitHub Page
 O workflow `.github/workflows/deploy.yml` gera o build e publica no GitHub Pages a cada push na `main`.
 O save na nuvem é opcional: sem as variáveis do Supabase o jogo roda só com o save local.
 
-1. **Supabase**: crie um projeto, abra *SQL Editor* e rode `supabase/contas.sql`.
-   A conta é só usuário e senha (sem e-mail): a senha vira hash bcrypt no servidor e o aparelho guarda um token de sessão.
-   As tabelas não têm acesso direto; tudo passa pelas funções `mdg_*`. Não precisa configurar nada em *Authentication*.
-   (`supabase/schema.sql` é o save antigo, com login por e-mail; não é mais usado.)
+1. **Supabase**: crie um projeto, abra *SQL Editor* e rode `supabase/conta-personagens.sql`.
+   A conta é e-mail + senha, com até 10 personagens (cada um com a sua partida). A senha vira hash bcrypt no servidor e o aparelho guarda um token de sessão.
+   As tabelas não têm acesso direto; tudo passa pelas funções `mdc_*`. Não precisa configurar nada em *Authentication*.
+   (`supabase/schema.sql` e `supabase/contas.sql` são os modelos antigos; o novo SQL traz as contas de `contas.sql` que tinham e-mail.)
 2. **GitHub**: crie o repositório e envie esta pasta. Em *Settings > Pages > Source* escolha **GitHub Actions**.
    A URL e a chave publishable do Supabase ficam em `.env.production` (públicas por natureza; o RLS protege os dados).
 3. Para testar a nuvem localmente, copie `.env.production` para `.env.local`.

@@ -298,6 +298,14 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 5px; border-radius: 5
 .pvpb.on { color: #ffd0cc; background: linear-gradient(180deg, rgba(150, 34, 40, .92), rgba(84, 16, 22, .94)); border-color: rgba(255, 110, 110, .7);
   box-shadow: 0 0 0 3px rgba(226, 57, 79, .22), 0 4px 14px rgba(0, 0, 0, .5); }
 /* senha: mostrar/esconder */
+/* personagens da conta */
+.plista { display: flex; flex-direction: column; gap: 6px; }
+.pitem { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; border-radius: 12px; background: rgba(255, 255, 255, .04); border: 1px solid var(--line2); }
+.pitem.on { border-color: var(--gold-lo); background: rgba(217, 180, 92, .09); }
+.pitem .pnome { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pitem .pnome b { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pitem .pnome small { font-size: 11.5px; color: var(--dim); }
+.pitem .btn { min-height: 40px; padding: 0 12px; flex: 0 0 auto; }
 .verSenha { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12.5px; color: var(--dim); cursor: pointer; }
 .verSenha input { width: 18px; height: 18px; accent-color: var(--gold); }
 .hub .pt { position: absolute; top: -3px; right: -3px; min-width: 20px; height: 20px; border-radius: 10px; padding: 0 5px; background: var(--gold); color: var(--ink);

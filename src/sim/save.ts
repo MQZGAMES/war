@@ -258,7 +258,7 @@ export function salvarLocalMundo(nuvem: ModoNuvem = "auto") {
   if (!G.running || !G.ctrl) return false;
   try {
     const m = mundoDe();
-    m.local = 1; m.heroi = G.ctrl.name; m.nivel = G.ctrl.lvl;
+    m.local = 1; m.heroi = G.ctrl.name; m.nivel = G.ctrl.lvl; (m as { vocacao?: string }).vocacao = G.ctrl.kind;
     if (nuvem !== "nao") ganchoSave.aoSalvar?.(m, nuvem);
     const s = JSON.stringify(m);
     if (s.length > 4e6) return false;
