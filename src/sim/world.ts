@@ -23,6 +23,12 @@ import { caveiraRelogio } from "./pk";
 /* ---------- modelos de ponto de caça por faixa (1..7) ---------- */
 export const ZONAS: { n: string; tier: number; sp: Partial<Record<KindKey, number>> }[] = [
   { n: "Pastagem", tier: 1, sp: { hen: 4, cow: 3 } },
+  { n: "Brejo das cobras", tier: 2, sp: { snake: 4, rat: 2 } },
+  { n: "Cemitério", tier: 3, sp: { skeleton: 4, snake: 1 } },
+  { n: "Deserto", tier: 4, sp: { scorpion: 3, lion: 1 } },
+  { n: "Cripta", tier: 6, sp: { vampire: 2, skeleton: 3 } },
+  { n: "Pântano da hidra", tier: 7, sp: { hydra: 1, snake: 3 } },
+  { n: "Covil do beemote", tier: 7, sp: { behemoth: 1, cyclops: 1 } },
   { n: "Toca de ratos", tier: 1, sp: { rat: 5 } },
   { n: "Ninhada", tier: 1, sp: { rat: 4, hen: 2 } },
   { n: "Alcateia", tier: 2, sp: { wolf: 5 } },
@@ -46,7 +52,8 @@ export const ZONAS: { n: string; tier: number; sp: Partial<Record<KindKey, numbe
 ];
 export const COR_TIER = ["#8fd6a0", "#b5d67f", "#dccf6a", "#e6b43a", "#e68a3a", "#e65f3f", "#d13a5a"];
 export function corTier(t: number) { return COR_TIER[clamp((t | 0) - 1, 0, 6)]; }
-const COTA_TIER = [.20, .18, .16, .14, .12, .11, .09];
+/* mais pontos fáceis perto da cidade: todo mundo começa no nível 1 */
+const COTA_TIER = [.22, .2, .16, .13, .11, .1, .08];
 function modeloDaZona(tier: number) {
   const L = ZONAS.filter((z) => z.tier === tier);
   return L[Math.floor(rnd() * L.length)];
@@ -54,7 +61,7 @@ function modeloDaZona(tier: number) {
 export function criarZonas() {
   W.zones = [];
   const c = W.cidade, N = W.N;
-  const alvo = clamp(Math.round(N * N / 470), 9, N > 150 ? 44 : 30);
+  const alvo = clamp(Math.round(N * N / 470), 9, N > 150 ? 50 : 30);
   const dMax = Math.max(dist(c.x, c.y, 3, 3), dist(c.x, c.y, N - 3, 3), dist(c.x, c.y, 3, N - 3), dist(c.x, c.y, N - 3, N - 3));
   const cru: { x: number; y: number; r: number; dT: number }[] = [];
   for (let tent = 0; tent < alvo * 80 && cru.length < alvo; tent++) {
@@ -95,7 +102,7 @@ export function criarZonas() {
   }
   garantirEspecies();
 }
-/* todo mundo tem as 14 criaturas, mesmo com "Poucos": a espécie que o
+/* todo mundo tem as 20 criaturas, mesmo com "Poucos": a espécie que o
    sorteio deixou de fora entra no ponto de caça da faixa mais próxima */
 function faixaDaEspecie(k: string) { let t = 7; for (const z of ZONAS) if (z.sp[k as KindKey] && z.tier < t) t = z.tier; return t; }
 function garantirEspecies() {
@@ -114,7 +121,7 @@ function garantirEspecies() {
 }
 
 /* ---------- [SYSTEM: WORLD_SPAWN] bandos de até 3 ---------- */
-const BANDO: Partial<Record<KindKey, number>> = { bear: 2, lion: 2, troll: 2, minotaur: 2, cyclops: 1, dragon: 1, demon: 1 };
+const BANDO: Partial<Record<KindKey, number>> = { bear: 2, lion: 2, troll: 2, scorpion: 2, minotaur: 2, vampire: 2, cyclops: 1, dragon: 1, hydra: 1, demon: 1, behemoth: 1 };
 const BANDO_GAP = 4.2, BANDO_ROAM = 1.8, BANDO_COLEIRA = 7;
 const REPOP_CD = 2.2;
 function bandoMax(kind: KindKey) { return BANDO[kind] || 3; }
@@ -313,9 +320,28 @@ function resolverConvites() {
     }
   }
 }
+/* auto agrupar do jogador: chama quem está livre por perto até completar */
+function agruparJogador() {
+  const c = G.ctrl;
+  if (!G.AUTO.agrupar || !c || c.dead) return;
+  const p = c.party;
+  if (p && p.membros.length > 1 && p.lider !== c) return;
+  if (p && p.membros.length >= EQUIPE_MAX) return;
+  let melhor: Unit | null = null, bs = -1e9;
+  const m = queryRadius(c.x, c.y, 14);
+  for (let i = 0; i < m; i++) {
+    const o = QBUF[i];
+    if (o === c || o.beast || o.dead || !o.w || o.convite || (o.party && o.party.membros.length > 1)) continue;
+    if (o.skull === "red" || rancor(o, c) > 0 || rancor(c, o) > 0 || (o.w.pkT > W.simTime)) continue;
+    const sc = -Math.abs(o.lvl - c.lvl) * 1.5 - dist(c.x, c.y, o.x, o.y) * .2 + (o.kind !== c.kind ? 2 : 0) + o.w.social * 3;
+    if (sc > bs) { bs = sc; melhor = o; }
+  }
+  if (melhor) convidar(c, melhor);
+}
 function conviteAutomatico() {
   if (!W.worldLivre || W.simTime < W.conviteIA) return;
   W.conviteIA = W.simTime + 2.5;
+  agruparJogador();
   for (const u of W.units) {
     if (u.dead || u.beast || u === G.ctrl || !u.w) continue;
     if (u.party && u.party.membros.length >= EQUIPE_MAX) continue;
@@ -339,10 +365,43 @@ export function deixarEquipe(u: Unit) {
   avisoDe(u, "Você deixou a equipe", "#8d9aa0");
   return true;
 }
+/* o líder tira alguém do grupo */
+export function expulsar(lider: Unit, m: Unit) {
+  const p = lider.party;
+  if (!p || p.lider !== lider || m === lider || m.party !== p) return false;
+  sairParty(m); novaParty(m);
+  if (m.w) m.think = 0;
+  avisoDe(lider, m.name + " saiu da equipe", "#8d9aa0");
+  avisoDe(m, lider.name + " tirou você da equipe", "#c96a5a");
+  return true;
+}
+/* [SYSTEM: KS] rancor por roubo de presa: o grupo briga pelo ponto se
+   estiver mais forte e disposto; se não, procura outro lugar */
+function reagirKs(p: Party) {
+  const L = p.lider;
+  if (!L || L.dead || L === G.ctrl || !L.w || !p.zona || p.modo !== "caçada") return;
+  let ladrao: Unit | null = null, r = 0;
+  const q = queryRadius(p.sq.cx, p.sq.cy, p.zona.r + 7);
+  const lista: Unit[] = []; for (let i = 0; i < q; i++) lista.push(QBUF[i]);
+  for (const e of lista) {
+    if (e.beast || e.dead || e.pz || e.party === p) continue;
+    let v = 0;
+    for (const m of p.membros) if (!m.dead) v = Math.max(v, rancor(m, e));
+    if (v > r) { r = v; ladrao = e; }
+  }
+  if (!ladrao || r < 2) return;
+  const vant = poderParty(p) / ((ladrao.party ? poderParty(ladrao.party) : poder(ladrao)) + 1);
+  const bravo = L.w.ousadia + L.w.pk * .6;
+  if (vant > 1.1 && bravo > 1.05 && L.w.perfil !== "criaturas" || (vant > 1.4 && r >= 3 && bravo > .9)) {
+    p.modo = "pk"; p.alvo = ladrao; p.pkAte = W.simTime + PK_DUR;
+    for (const m of p.membros) { if (m.dead || m === G.ctrl || !m.w) continue; m.w.pkT = W.simTime + PK_DUR; m.w.alvoPk = ladrao; m.think = .05; }
+    if (ladrao === G.ctrl || (G.ctrl && ladrao.party && ladrao.party === G.ctrl.party)) ui.banner("Briga pelo ponto", L.name + " cansou do KS", "alerta");
+  } else if (vant < .8 || r >= 4) trocarZona(p, "o ponto está disputado");
+}
 export function poderParty(p: Party) { let s = 0; for (const m of p.membros) if (!m.dead) s += poder(m); return s; }
 export function vivosParty(p: Party) { let n = 0; for (const m of p.membros) if (!m.dead) n++; return n; }
 
-function escolheZona(p: Party) {
+function escolheZona(p: Party, evitar: Zona | null = null) {
   let lv = 0, n = 0;
   for (const m of p.membros) { if (m.dead) continue; lv += m.lvl; n++; }
   lv = n ? lv / n : 1;
@@ -354,6 +413,9 @@ function escolheZona(p: Party) {
     let sc = -Math.abs(z.tier - ideal) * 3.2;
     if (z.tier > ideal + 1) sc -= 6;
     sc -= z.grupos * 2.4;
+    if (z === evitar) sc -= 12;
+    /* ponto esvaziado por outro grupo rende pouco */
+    if (z.alvoPop && z.pop < z.alvoPop * .4) sc -= 3;
     if (z.grupos >= lotacaoZona(z)) sc -= 7;
     if (z.grupos >= lotacaoZona(z) && forca > 1.25 * z.tier * 260 * n) sc += 4;
     const dz = dist(p.sq.cx, p.sq.cy, z.x, z.y) / W.N;
@@ -365,8 +427,18 @@ function escolheZona(p: Party) {
   if (p.zona) p.zona.grupos = Math.max(0, p.zona.grupos - 1);
   p.zona = melhor;
   if (melhor) { melhor.grupos++; postoDe(p, melhor); }
-  p.zonaT = W.simTime + rr(T.zonaT[0], T.zonaT[1]);
-  p.modo = "caçada";
+  p.zonaT = W.simTime + rr(T.zonaT[0], T.zonaT[1]) * 2.2;
+  p.modo = "caçada"; p.lutaT = W.simTime; p.largou = null;
+}
+/* troca de ponto sem voltar à cidade: vazio, sem luta há muito tempo ou cansou */
+function trocarZona(p: Party, motivo: string) {
+  const velha = p.zona;
+  if (velha) velha.grupos = Math.max(0, velha.grupos - 1);
+  p.zona = null;
+  escolheZona(p, velha);
+  p.largou = velha;
+  const nova = p.zona as Zona | null;
+  if (G.ctrl && G.ctrl.party === p && p.lider && p.lider !== G.ctrl && nova) avisoDe(G.ctrl, p.lider.name + ": " + motivo + ", vamos para " + nova.name, "#9fd0ff");
 }
 function postoDe(p: Party, z: Zona) {
   const dx = p.sq.cx - z.x, dy = p.sq.cy - z.y, l = Math.hypot(dx, dy) || 1;
@@ -517,14 +589,15 @@ function precisaCidade(u: Unit) {
   const conj = u.maxMp > 0 && u.kind !== "knight";
   if (saldo(u) >= PRECO_POCAO * 8 && (u.potHp < 4 || (conj && u.potMp < 4))) return true;
   if (livres(u.mochila) <= 1) return true;
-  return u.ouro > 600 + u.lvl * 150;
+  return u.ouro > 1500 + u.lvl * 250;
 }
 function irCidade(u: Unit) {
   const w = u.w!;
   if (w.goal !== "cidade") { w.goal = "cidade"; w.etapa = 0; w.pronto = false; }
   if (!u.pz) {
     if (pzAtiva(u)) {
-      const g = portaoPara(u);
+      /* com trava, espera longe da cidade: ali ninguém renova a trava dele */
+      const g = esconderijo(u);
       w.dx = g.x; w.dy = g.y;
       let perto: Unit | null = null, pd = 1e9;
       const m = queryRadius(u.x, u.y, 8);
@@ -555,6 +628,26 @@ function irCidade(u: Unit) {
   const f = nearestFree(W.cidade.x + clamp(u.driftX, -4.5, 4.5), W.cidade.y + clamp(u.driftY, -4.5, 4.5));
   w.dx = f[0] + .5; w.dy = f[1] + .5;
 }
+const ESC = { x: 0, y: 0 };
+function esconderijo(u: Unit) {
+  const w = u.w!, c = W.cidade;
+  const longe = c.r + 15;
+  if (w.escX === undefined || dist(w.escX, w.escY!, c.x, c.y) < longe - 2) {
+    let a = Math.atan2(u.y - c.y, u.x - c.x) + rr(-.6, .6), melhor: [number, number] | null = null, bs = -1e9;
+    for (let k = 0; k < 10; k++) {
+      const d = longe + rr(0, 10);
+      const f = nearestFree(clamp(c.x + Math.cos(a) * d, 3, W.N - 3), clamp(c.y + Math.sin(a) * d, 3, W.N - 3), true);
+      let sc = dist(f[0], f[1], c.x, c.y) * .3 - dist(f[0], f[1], u.x, u.y) * .15;
+      const m = queryRadius(f[0] + .5, f[1] + .5, 7);
+      for (let i = 0; i < m; i++) { const e = QBUF[i]; if (e !== u && !e.dead && (e.beast ? (e.K.aggro || 0) > 0 : !(u.party && e.party === u.party))) sc -= 2; }
+      if (sc > bs) { bs = sc; melhor = f; }
+      a += rr(-1.2, 1.2);
+    }
+    w.escX = melhor![0] + .5; w.escY = melhor![1] + .5;
+  }
+  ESC.x = w.escX!; ESC.y = w.escY!;
+  return ESC;
+}
 function spotDePresa(u: Unit) {
   let melhor: Zona | null = null, bs = -1e9;
   for (const p of W.parties) {
@@ -571,7 +664,10 @@ function spotDePresa(u: Unit) {
 }
 function worldGoal(u: Unit) {
   const w = u.w!, vida = u.hp / u.maxHp, mana = u.maxMp ? u.mp / u.maxMp : 1, p = u.party;
-  if (precisaCidade(u) || vida < .42 || mana < .18 || (p && p.modo === "acampar")) { irCidade(u); return; }
+  /* sem vida ou mana só volta se não tiver poção para repor: jogador de verdade bebe e segue */
+  const semHp = vida < .42 && u.potHp <= 0, semMp = mana < .18 && u.potMp <= 0 && u.kind !== "knight";
+  if (precisaCidade(u) || semHp || semMp || (p && p.modo === "acampar")) { irCidade(u); return; }
+  if (w.escX !== undefined && !pzAtiva(u)) w.escX = undefined;
   if (p && p.modo === "pk" && p.alvo && !p.alvo.dead) {
     w.goal = "pk"; w.dx = p.alvo.x + u.driftX * .25; w.dy = p.alvo.y + u.driftY * .25; return;
   }
@@ -749,8 +845,20 @@ export function worldStep() {
     }
     if (p.modo === "caçada") {
       disputaZona(p);
+      reagirKs(p);
+      if (p.modo !== "caçada") continue;
       const caidos = p.membros.length - vivos;
-      if (!vivos || feridos > vivos * .5 || caidos > 0 || cidadeJa > 0 || W.simTime > p.zonaT) {
+      /* luta recente de alguém do grupo */
+      for (const m of p.membros) if (!m.dead && m.target && !m.target.dead && m.target.beast) { p.lutaT = W.simTime; break; }
+      const noPonto = p.zona && dist(p.sq.cx, p.sq.cy, p.zona.x, p.zona.y) < p.zona.r + 5;
+      const lider = p.lider && p.lider !== G.ctrl;
+      if (lider && p.zona && vivos && !caidos && !cidadeJa) {
+        if (noPonto && p.zona.pop <= Math.max(1, p.zona.alvoPop * .2)) { trocarZona(p, "o ponto esvaziou"); continue; }
+        if (noPonto && W.simTime - (p.lutaT || 0) > 35) { trocarZona(p, "nada para caçar aqui"); continue; }
+        if (W.simTime > p.zonaT) { trocarZona(p, "hora de mudar de ares"); continue; }
+      }
+      void feridos;
+      if (!vivos || caidos > 0 || cidadeJa > 0) {
         if (p.zona) p.zona.grupos = Math.max(0, p.zona.grupos - 1);
         p.zona = null; p.modo = "acampar"; p.t = W.simTime + rr(2, 5);
         p.paciencia = W.simTime + rr(10, 20);

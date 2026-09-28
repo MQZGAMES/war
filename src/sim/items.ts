@@ -7,7 +7,7 @@
    ================================================================ */
 import { KINDS, POCAO, type VocKey } from "./data";
 import { avisoDe, fx } from "./fx";
-import { BASES, BASES_EQUIP, COFRE_N, MOCHILA_N, NIVEL_MAX, PESO, PRECO_POCAO, SLOTS, STAT_NOME, type StatKey } from "./itemsData";
+import { BASES, BASES_EQUIP, BASES_LOJA, COFRE_N, MOCHILA_N, NIVEL_MAX, PESO, PRECO_POCAO, RARO_COR, RARO_NOME, RARO_PRECO, SLOTS, STAT_NOME, type StatKey } from "./itemsData";
 import { pzAtiva } from "./pk";
 import { clamp, rnd } from "./rng";
 import { G } from "./state";
@@ -26,11 +26,13 @@ export function corItem(it: Coisa) {
   const B = BASES[it.b];
   return B.pocao ? (B.pocao === "hp" ? "#e0685a" : "#6fb5e6") : B.cor;
 }
+export const raridade = (it: Coisa) => BASES[it.b].raro || 0;
+export const corRaridade = (it: Coisa) => RARO_COR[raridade(it)];
 export function precoItem(it: Coisa) {
   const B = BASES[it.b];
   if (B.pocao) return B.preco * ((it as Pocao).n || 1);
   const k = (it as Item).k;
-  return Math.round(B.preco * Math.pow(1.55, k - 1) * Math.sqrt(k));
+  return Math.round(B.preco * Math.pow(1.55, k - 1) * Math.sqrt(k) * RARO_PRECO[B.raro || 0]);
 }
 export const precoVenda = (it: Coisa) => Math.floor(precoItem(it) * .5);
 export function servePara(it: Coisa, kind: string) { const v = BASES[it.b].voc; return !v || v.indexOf(kind as VocKey) >= 0; }
@@ -43,11 +45,24 @@ export function nivelLoot(tier: number) {
   if (rnd() < .1) k += 1 + (rnd() < .35 ? 1 : 0);
   return clamp(k, 1, NIVEL_MAX);
 }
-export function itemAleatorio(tier: number) { return novoItem(BASES_EQUIP[Math.floor(rnd() * BASES_EQUIP.length)], nivelLoot(tier)); }
+/* raridade pelo ponto de caça e pela força da criatura (0..1) */
+export function sorteiaRaridade(tier: number, forca: number) {
+  const r = rnd();
+  const p3 = tier >= 6 ? .03 + (tier - 6) * .03 + forca * .05 : 0;
+  const p2 = tier >= 3 ? .07 + (tier - 3) * .03 + forca * .06 : tier >= 2 ? .03 : 0;
+  const p1 = .18 + tier * .02;
+  return r < p3 ? 3 : r < p3 + p2 ? 2 : r < p3 + p2 + p1 ? 1 : 0;
+}
+export function itemAleatorio(tier: number, forca = 0) {
+  const rar = sorteiaRaridade(tier, forca);
+  const L = BASES_EQUIP.filter((b) => (BASES[b].raro || 0) === rar);
+  /* peça rara vem um pouco abaixo no nível: o bônus está na base */
+  return novoItem(L[Math.floor(rnd() * L.length)], nivelLoot(tier) - (rar >= 2 ? 1 : 0));
+}
 export function descreveStats(it: Coisa) {
   const B = BASES[it.b];
   if (B.pocao) return "+" + (B.pocao === "hp" ? POCAO.hp + " vida" : POCAO.mp + " mana") + " por gole";
-  let s = "";
+  let s = B.raro ? RARO_NOME[B.raro][0].toUpperCase() + RARO_NOME[B.raro].slice(1) : "";
   for (const k in STAT_NOME) {
     if (!B.st[k as StatKey]) continue;
     s += (s ? " · " : "") + "+" + itemStat(it as Item, k as StatKey) + (k === "spd" ? "" : " ") + STAT_NOME[k as StatKey];
@@ -222,7 +237,7 @@ export function sacarItem(u: Unit, j: number, n?: number) {
 export const ITEM_TMP: Item = { b: "espada", k: 1 };
 export function melhorDaCasa(u: Unit, s: SlotKey, verba: number) {
   let mb: string | null = null, mk = 0, mg = .01;
-  for (const b of BASES_EQUIP) {
+  for (const b of BASES_LOJA) {
     const B = BASES[b];
     if (B.s !== s || (B.voc && B.voc.indexOf(u.kind as VocKey) < 0)) continue;
     for (let k = 1; k <= NIVEL_MAX; k++) {
@@ -279,7 +294,7 @@ export function mantem(u: Unit, it: Coisa) {
     const r = reservaNoCofre(u, B.s);
     if (r < 0 || valorPara(u, it) > valorPara(u, u.cofre[r]) + .01) return true;
   }
-  return (it as Item).k >= COFRE_VALIOSO && !duplicataNoCofre(u, it as Item);
+  return ((it as Item).k >= COFRE_VALIOSO || (BASES[it.b].raro || 0) >= 2) && !duplicataNoCofre(u, it as Item);
 }
 export function guardarNoCofre(u: Unit) {
   let n = 0;
@@ -303,7 +318,7 @@ export function guardarNoCofre(u: Unit) {
         const velha = u.cofre[r]; u.cofre[r] = it; u.mochila[i] = velha; n++; continue;
       }
     }
-    if ((it as Item).k >= COFRE_VALIOSO && !duplicataNoCofre(u, it as Item) && depositarItem(u, i)) n++;
+    if (((it as Item).k >= COFRE_VALIOSO || (BASES[it.b].raro || 0) >= 2) && !duplicataNoCofre(u, it as Item) && depositarItem(u, i)) n++;
   }
   return n;
 }

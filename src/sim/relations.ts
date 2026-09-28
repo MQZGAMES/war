@@ -102,7 +102,7 @@ export function rancor(a: Unit, b: Unit) {
   if (!r || r.t < W.simTime) return 0;
   return r.v;
 }
-function somaRancor(a: Unit, b: Unit, v: number) {
+export function somaRancor(a: Unit, b: Unit, v: number) {
   if (a === b || a.beast || b.beast) return;
   const R = a.rep || (a.rep = {});
   const r = R[b.id] || (R[b.id] = { v: 0, t: 0, nome: b.name });
@@ -114,6 +114,21 @@ function somaRancor(a: Unit, b: Unit, v: number) {
     for (const k of ks) { const x = R[+k]; if (x.t < W.simTime || x.v < pv) { pv = x.v; pior = k; } }
     if (pior) delete R[+pior];
   }
+}
+/* [SYSTEM: KS] bater no monstro que outro aventureiro já estava matando
+   irrita o dono: vira rancor, e rancor pode virar briga pelo ponto */
+export const KS_JANELA = 12;
+const ksAviso = new Map<string, number>();
+export function registrarKs(dono: Unit, ladrao: Unit) {
+  if (dono === ladrao || dono.dead || ladrao.dead || aliado(dono, ladrao)) return;
+  const k = dono.id + ":" + ladrao.id, ult = ksAviso.get(k) || -1e9;
+  if (W.simTime - ult < 6) return;
+  ksAviso.set(k, W.simTime);
+  if (ksAviso.size > 400) ksAviso.clear();
+  somaRancor(dono, ladrao, 1);
+  if (dono.party) for (const m of dono.party.membros) if (m !== dono && !m.beast) somaRancor(m, ladrao, .5);
+  if (dono === G.ctrl) avisoDe(dono, ladrao.name + " está roubando seus monstros (KS)", "#e0b93a");
+  else if (ladrao === G.ctrl) avisoDe(ladrao, dono.name + " se irritou: o monstro era dele (KS)", "#e0b93a");
 }
 export function anotarRancor(vitima: Unit, algoz: Unit) {
   const antes = rancor(vitima, algoz);

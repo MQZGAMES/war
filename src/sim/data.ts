@@ -7,7 +7,8 @@
 export type VocKey = "knight" | "archer" | "mage" | "druid";
 export type BeastKey =
   | "hen" | "rat" | "cow" | "wolf" | "boar" | "spider" | "bear" | "orc"
-  | "lion" | "troll" | "minotaur" | "cyclops" | "dragon" | "demon";
+  | "lion" | "troll" | "minotaur" | "cyclops" | "dragon" | "demon"
+  | "snake" | "skeleton" | "scorpion" | "vampire" | "hydra" | "behemoth";
 export type KindKey = VocKey | BeastKey;
 
 export interface BeastAtk {
@@ -16,6 +17,10 @@ export interface BeastAtk {
   baque?: { raio: number; frac: number };
   bola?: { dmg: number; cd: number; rng: number; raio: number };
   onda?: { dmg: number; cd: number; rng: number; larg: number; vel: number };
+  /* peçonha: a mordida envenena (dano por segundo, duração) */
+  peconha?: { dps: number; dur: number };
+  /* dreno: cura a si mesmo com parte do dano que causa */
+  drena?: number;
 }
 
 export interface KindDef {
@@ -42,9 +47,9 @@ export const KINDS: Record<KindKey, KindDef> = {
     threat: 1.0, flee: .16, sight: 12, r: .34, mp: 70, rHp: 3.2, rMp: 1.5, alt: 1.15 },
   archer: { key: "archer", pt: "Arqueiro", icon: "🏹", hp: 112, spd: 2.25, range: 5, dmg: 27, cd: RITMO, armor: .09,
     threat: 1.55, flee: .34, sight: 13, r: .29, keep: 2.9, proj: "arrow", mp: 85, rHp: 2.2, rMp: 2.2, alt: 1.1 },
-  mage: { key: "mage", pt: "Mago", icon: "✦", hp: 96, spd: 1.76, range: 5, dmg: 25, cd: RITMO, armor: .05,
+  mage: { key: "mage", pt: "Mago", icon: "✦", hp: 100, spd: 1.76, range: 5, dmg: 25, cd: RITMO, armor: .05,
     threat: 1.85, flee: .38, sight: 12, r: .3, keep: 3.1, proj: "fire", mp: 125, rHp: 1.2, rMp: 3.6, alt: 1.3 },
-  druid: { key: "druid", pt: "Druida", icon: "☘", hp: 104, spd: 1.76, range: 5, dmg: 23, cd: RITMO, armor: .05,
+  druid: { key: "druid", pt: "Druida", icon: "☘", hp: 100, spd: 1.76, range: 5, dmg: 23, cd: RITMO, armor: .05,
     threat: 1.7, flee: .38, sight: 12, r: .3, keep: 3.1, proj: "ice", mp: 125, rHp: 1.2, rMp: 3.6, alt: 1.15 },
 
   /* [SYSTEM: BESTIARY] a ordem é a ordem de força */
@@ -83,10 +88,29 @@ export const KINDS: Record<KindKey, KindDef> = {
   demon: { key: "demon", pt: "Demônio", beast: true, lvlM: 32, nv: [28, 36], hp: 1400, spd: 2.05, range: 2.2, dmg: 70, cd: 1.4, armor: .44,
     threat: 2.40, flee: 0, sight: 16, r: .78, mp: 0, rHp: 7.0, rMp: 0, aggro: 14, roam: 9, xpVal: 2000, alt: 2.8,
     atk: { bola: { dmg: 72, cd: 3.4, rng: 11.5, raio: 2.1 }, onda: { dmg: 55, cd: 6.2, rng: 8.5, larg: 2.0, vel: 10 }, baque: { raio: 2.0, frac: .45 } } },
+
+  /* as seis do bestiário novo, no molde do Tibia */
+  snake: { key: "snake", pt: "Cobra", beast: true, lvlM: 6, nv: [5, 8], hp: 62, spd: 1.95, matilha: 1, range: .95, dmg: 9, cd: 1.1, armor: .04,
+    threat: .5, flee: .2, sight: 9, r: .26, mp: 0, rHp: 1.2, rMp: 0, aggro: 6, roam: 5, xpVal: 70, alt: .35,
+    atk: { peconha: { dps: 3, dur: 5 } } },
+  skeleton: { key: "skeleton", pt: "Esqueleto", beast: true, lvlM: 10, nv: [9, 12], hp: 150, spd: 1.7, matilha: 1, range: 1.2, dmg: 17, cd: 1.2, armor: .18,
+    threat: .75, flee: 0, sight: 10, r: .32, mp: 0, rHp: .6, rMp: 0, aggro: 9, roam: 6, xpVal: 165, alt: 1.2 },
+  scorpion: { key: "scorpion", pt: "Escorpião", beast: true, lvlM: 14, nv: [12, 16], hp: 215, spd: 2.1, matilha: 1, range: 1.2, dmg: 20, cd: 1.2, armor: .3,
+    threat: .92, flee: .1, sight: 10, r: .4, mp: 0, rHp: 1.8, rMp: 0, aggro: 9, roam: 6, xpVal: 240, alt: .6,
+    atk: { peconha: { dps: 5, dur: 6 } } },
+  vampire: { key: "vampire", pt: "Vampiro", beast: true, lvlM: 21, nv: [19, 24], hp: 430, spd: 2.4, range: 1.3, dmg: 38, cd: 1.1, armor: .26,
+    threat: 1.3, flee: .05, sight: 13, r: .34, mp: 0, rHp: 3, rMp: 0, aggro: 11, roam: 8, xpVal: 540, alt: 1.35,
+    atk: { drena: .5, investida: { cd: 7, min: 3, max: 7, dur: .7 } } },
+  hydra: { key: "hydra", pt: "Hidra", beast: true, lvlM: 29, nv: [26, 32], hp: 1100, spd: 1.5, range: 1.9, dmg: 55, cd: 1.3, armor: .34,
+    threat: 2.0, flee: 0, sight: 14, r: .72, mp: 0, rHp: 6, rMp: 0, aggro: 12, roam: 8, xpVal: 1450, alt: 2.0,
+    atk: { onda: { dmg: 40, cd: 6, rng: 7, larg: 1.8, vel: 8 }, peconha: { dps: 8, dur: 6 } } },
+  behemoth: { key: "behemoth", pt: "Beemote", beast: true, lvlM: 36, nv: [33, 40], hp: 1850, spd: 1.8, range: 2.3, dmg: 86, cd: 1.5, armor: .46,
+    threat: 2.6, flee: 0, sight: 14, r: .8, mp: 0, rHp: 8, rMp: 0, aggro: 13, roam: 8, xpVal: 2700, alt: 3.0,
+    atk: { baque: { raio: 2.4, frac: .55 }, investida: { cd: 8, min: 3, max: 8, dur: .8 } } },
 };
 
 export const VOCS: VocKey[] = ["knight", "archer", "mage", "druid"];
-export const BEASTS: BeastKey[] = ["hen", "rat", "cow", "wolf", "boar", "spider", "bear", "orc", "lion", "troll", "minotaur", "cyclops", "dragon", "demon"];
+export const BEASTS: BeastKey[] = ["hen", "rat", "cow", "wolf", "snake", "boar", "spider", "skeleton", "bear", "orc", "scorpion", "lion", "troll", "minotaur", "vampire", "cyclops", "dragon", "hydra", "demon", "behemoth"];
 
 /* ---------- magia ---------- */
 export type SpellKey = "cura" | "investida" | "meteoro" | "triplo" | "chuva" | "certeiro" | "terremoto" | "trevas" | "nevasca"
@@ -265,6 +289,8 @@ export interface AutoCfg {
   refil: { ligado: number; hp: number; mp: number; vender: number; pocoes: number; comprar: number; banco: number };
   equip: number;
   lider: number;
+  /* sempre tentar ter a equipe completa com quem está livre */
+  agrupar: number;
 }
 export function autoPadrao(): AutoCfg {
   return {
@@ -273,6 +299,7 @@ export function autoPadrao(): AutoCfg {
     refil: { ligado: 1, hp: 50, mp: 50, vender: 1, pocoes: 1, comprar: 1, banco: 1 },
     equip: 1,
     lider: 0,
+    agrupar: 0,
   };
 }
 

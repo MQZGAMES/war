@@ -180,6 +180,17 @@ export function animar(r: Rig, p: Pose) {
       o[1].rotation.x = -p.bote * .3;
       break;
     }
+    case "serpente": {
+      /* a onda corre da cabeça para a cauda; parada, só respira e ergue a cabeça */
+      const n = o.length - 1, amp = .32 * w + .08;
+      for (let i = 1; i <= n; i++) o[i].rotation.y = Math.sin(t * (w > .2 ? 7 : 1.6) - i * .9) * amp * (i === 1 ? .3 : 1);
+      const g = p.golpe >= 0 ? Math.sin(p.golpe * Math.PI) : 0;
+      o[n].rotation.x = -.25 - g * .5 + Math.sin(t * 1.3) * .05;
+      o[n].rotation.y *= .4;
+      if (n > 1) o[n - 1].rotation.x = -.2 - g * .3;
+      o[n].position.z = rest[n].z + p.bote * .12;
+      break;
+    }
     case "dragao": {
       const amp = .45;
       o[D.FL].rotation.x = -s * amp * w; o[D.BR].rotation.x = -s * amp * w;

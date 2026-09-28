@@ -19,9 +19,9 @@ export type Cfg = Record<VocKey, number>;
    blocos recortados pela câmera; a simulação pesa pelos bichos, não pelo chão) */
 export const TAMANHO_MEGA = 192;
 export const SETUP = {
-  livre: true, guildas: 2, tamanho: 128, monstros: 120,
-  cfgLivre: { knight: 4, archer: 4, mage: 4, druid: 4 } as Cfg,
-  cfgGuilda: [0, 1, 2, 3].map(() => ({ knight: 1, archer: 1, mage: 1, druid: 1 })) as Cfg[],
+  livre: true, guildas: 2, tamanho: 192, monstros: 220,
+  cfgLivre: { knight: 8, archer: 8, mage: 8, druid: 8 } as Cfg,
+  cfgGuilda: [0, 1, 2, 3].map(() => ({ knight: 4, archer: 4, mage: 4, druid: 4 })) as Cfg[],
   sujo: false,
 };
 export const somaCfg = (c: Cfg) => VOCS.reduce((a, k) => a + c[k], 0);
@@ -70,8 +70,7 @@ export function buildWorldArmies() {
       const f = nearestFree(W.cidade.x + rr(-5, 5), W.cidade.y + rr(-5, 5));
       const u = makeUnit(t, k, f[0] + .5, f[1] + .5);
       u.cor = W.worldLivre ? corLivre() : corGuilda(t);
-      const lv = 1 + Math.floor(rnd() * rnd() * 9);
-      for (let m = 1; m < lv; m++) { u.lvl++; u.attr[pontoDoPlano(u)]++; }
+      /* todo mundo começa do zero: nível 1, kit básico */
       iniciaMundoUnit(u);
       u.pz = emPZ(u.x, u.y);
       u.fa = rnd() * 6.283; u.moveA = u.fa;

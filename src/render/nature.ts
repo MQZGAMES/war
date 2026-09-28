@@ -8,7 +8,7 @@ import * as THREE from "three";
 import { W } from "../sim/state";
 import { vnoise } from "../sim/rng";
 import { CID_R } from "../sim/map";
-import { alturaEm, temaDaZona } from "./terrain";
+import { ESTRADA, alturaEm, temaDaZona } from "./terrain";
 import { Montador, P, deformar, lamina } from "./geo";
 import { canvasTex, comVento, cor, h2 } from "./util";
 import type { Zona } from "../sim/types";
@@ -297,7 +297,9 @@ export function construirNatureza(qual: "baixa" | "media" | "alta"): THREE.Group
   }
 
   /* grama: tufos por ladrilho, em blocos de 16×16 para o recorte da câmera */
-  const dens = qual === "alta" ? 4 : qual === "media" ? 2 : 1;
+  /* grama mais rala que antes, e nenhuma em cima das estradas */
+  const dens = qual === "alta" ? 2 : 1;
+  const rala = qual === "baixa" ? .45 : qual === "media" ? .75 : 1;
   const geoT = geoTufo();
   const B = 16;
   for (let by = 0; by < N; by += B) for (let bx = 0; bx < N; bx += B) {
@@ -307,6 +309,8 @@ export function construirNatureza(qual: "baixa" | "media" | "alta"): THREE.Group
       if (tc[i] === 200 || tc[i] >= 4 || W.solid[i] || W.tronco[i]) continue;
       const dc = Math.hypot(x + .5 - c.x, y + .5 - c.y);
       if (dc < CID_R + .8) continue;
+      const est = ESTRADA.m[i] || 0;
+      if (est > .12 || h2(x * 7 + 3, y * 11 + 5) > rala * (1 - est * 2)) continue;
       const z = temaEm(x + .5, y + .5), nome = z ? z.name : "";
       let d = dens;
       if (QUEIMADO.has(nome)) d = h2(x, y) < .2 ? 1 : 0;

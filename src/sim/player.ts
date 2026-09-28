@@ -4,6 +4,7 @@
    [SYSTEM: ALVO_TRAVADO] [SYSTEM: AUTO_REFIL] [SYSTEM: GRUPO_REFIL]
    [SYSTEM: LIDER] — mesma lógica da v54.
    ================================================================ */
+import { planejarMagia } from "./tatica";
 import { CHUVA_ALCANCE, CUSTO, MET_ALCANCE, NUM_SLOTS, SPELLS, ST, type SpellKey } from "./data";
 import { avisoDe, fx } from "./fx";
 import { comprarMelhorias, comprarPocoes, depositarOuro, ehPocao, guardarNoCofre, livres, mantem, saldo, semFrasco, venderItem, PRECO_POCAO } from "./items";
@@ -95,17 +96,20 @@ export function autoCuraPasso(u: Unit) {
   }
   return false;
 }
+/* magias automáticas do personagem: o mesmo planejador da IA, só com o
+   que está nas casas. Terremoto só com inimigo perto, área quando rende */
 function autoEspecial(u: Unit) {
   if (!u.target || u.target.dead) return;
   const apertado = G.AUTO.cura.ligado && u.hp < u.maxHp * Math.min(.95, G.AUTO.cura.pct + .25);
-  for (let i = 0; i < NUM_SLOTS; i++) {
-    const k = slotDe(u, i);
-    if (k === "cura" || k === "chuva") continue;
-    const m = magiaDe(u, k);
-    if (m.ex > 0) continue;
-    if (u.mp < m.custo + (apertado ? CUSTO.cura : 0)) continue;
-    if (m.mira ? lancar(u, k, u.target.x, u.target.y) : lancar(u, k)) return;
-  }
+  const casas: SpellKey[] = [];
+  for (let i = 0; i < NUM_SLOTS; i++) casas.push(slotDe(u, i));
+  const pl = planejarMagia(u, u.target, casas, apertado ? CUSTO.cura : 0);
+  if (!pl) return;
+  const guardado = u.target;
+  if (pl.alvo) u.target = pl.alvo;
+  const ok = SPELLS[pl.k].mira ? lancar(u, pl.k, pl.x, pl.y) : lancar(u, pl.k);
+  u.target = guardado;
+  void ok;
 }
 function autoAtaque(u: Unit) {
   const caca = G.AUTO.ataque.modo === "desligado" ? null : alvoAuto(u);

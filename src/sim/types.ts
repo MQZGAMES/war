@@ -37,6 +37,8 @@ export interface WorldMind {
   cacaT: number; presa: Zona | null; etapa: number; pronto: boolean;
   perfil: AtqModo; perfilT: number; azar: number;
   compraLider?: boolean; reencontro?: number; puxa?: string;
+  /* esconderijo enquanto espera a trava de PZ acabar, longe da cidade */
+  escX?: number; escY?: number;
 }
 
 export interface Refil { fase: "isolar" | "rota" | "esperar" | "voltar"; i: number; rota: string[]; x: number; y: number; t: number }
@@ -54,6 +56,8 @@ export interface Party {
   id: number; team: number; sq: Squad; membros: Unit[]; lider: Unit | null;
   modo: string; zona: Zona | null; t: number; zonaT: number; pkAte: number; alvo: Unit | null; poder: number;
   tatica: string; eleicaoT: number; posto: Pt; puxador: Unit | null; min: number; paciencia: number;
+  /* último instante em que alguém do grupo lutou; ponto abandonado por último */
+  lutaT?: number; largou?: Zona | null;
 }
 
 export interface Unit {
@@ -94,4 +98,6 @@ export interface Unit {
   hitX: number; hitY: number; castT: number; castK: string;
   /* veneno da flecha: dano por segundo até `venAte` */
   venDps: number; venAte: number; venTick: number; venSrc: Unit | null;
+  /* criatura: o primeiro aventureiro que a atacou (para o KS) */
+  dono: Unit | null; donoT: number;
 }

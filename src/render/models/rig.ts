@@ -6,7 +6,7 @@
    ================================================================ */
 import * as THREE from "three";
 
-export type Arquetipo = "humano" | "quad" | "ave" | "aranha" | "dragao";
+export type Arquetipo = "humano" | "quad" | "ave" | "aranha" | "dragao" | "serpente";
 export interface OssoSpec { pai: number; p: [number, number, number] }
 /* ponto de interesse preso a um osso: ponta do cajado, boca, olho */
 export interface Ponto { osso: number; p: [number, number, number] }

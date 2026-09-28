@@ -68,6 +68,11 @@ export function Ico({ n, s = 22, cls, style }: { n: string; s?: number; cls?: st
 /* ---------- itens (v54) ---------- */
 const ICS: Record<string, string> = {
   espada: '<path d="M20 2l2 2-12 12-2-2z" fill="§"/><path d="M5 13l6 6-1.5 1.5-6-6z" fill="#b08a3a"/><path d="M4.5 17.5l2 2L4 22l-2-2z" fill="#6a4a24"/>',
+  machado: '<path d="M6 22L17 6" stroke="#6a4a24" stroke-width="2.2" stroke-linecap="round"/><path d="M14 3c4 0 7 3 7 7l-4 1-4-5z" fill="§"/>',
+  martelo: '<path d="M5 22L15 9" stroke="#6a4a24" stroke-width="2.4" stroke-linecap="round"/><path d="M11 4l6-2 5 7-6 2z" fill="§"/>',
+  besta: '<path d="M4 20L20 4" stroke="#6a4a24" stroke-width="2.4"/><path d="M3 9q6-6 12 0" stroke="§" stroke-width="2.4" fill="none" transform="rotate(45 12 12)"/><path d="M12 12l6 6" stroke="#cfd6da" stroke-width="1.4"/>',
+  orbe: '<circle cx="12" cy="11" r="7" fill="§"/><circle cx="9.5" cy="8.5" r="2.2" fill="#fff" opacity=".6"/><path d="M7 20h10l-2-3H9z" fill="#8a6a3a"/>',
+  tiara: '<path d="M3 16l3-8 3 5 3-8 3 8 3-5 3 8z" fill="#e6c25a"/><circle cx="12" cy="12" r="2.2" fill="§"/>',
   montante: '<path d="M21 1l2 2L9.5 16.5l-2-2z" fill="§"/><path d="M4 12l8 8-1.6 1.6-8-8z" fill="#b08a3a"/><path d="M3.5 17l3.5 3.5L4 23.5 .5 20z" fill="#6a4a24"/>',
   arco: '<path d="M7 2q13 10 0 20" stroke="§" stroke-width="2.6" fill="none"/><path d="M7 2v20" stroke="#e8dcbe" stroke-width="1"/><path d="M4 12h15m-3-2.5 3 2.5-3 2.5" stroke="#cfd6da" stroke-width="1.4" fill="none"/>',
   varinha: '<path d="M4 20 16 8l1.5 1.5L5.5 21.5z" fill="#7a5a34"/><circle cx="18" cy="6" r="3.3" fill="§"/>',

@@ -97,7 +97,7 @@ export function makeUnit(team: number, kind: KindKey, x: number, y: number): Uni
     refil: null, refilEspera: 0, refilAvisoT: 0,
     xpMult: 1, zona: null, bando: null, coleira: 0, remover: false, _imp: 0,
     hitX: 0, hitY: 0, castT: 0, castK: "",
-    venDps: 0, venAte: 0, venTick: 0, venSrc: null,
+    venDps: 0, venAte: 0, venTick: 0, venSrc: null, dono: null, donoT: 0,
   };
 }
 

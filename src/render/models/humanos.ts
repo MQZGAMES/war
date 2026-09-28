@@ -155,12 +155,19 @@ export function modeloHeroi(kind: string, cor: { c: string; lo: string; hi: stri
     /* peitoral sobre a túnica e saia de cota */
     m.add(P.cil(p.troncoW * .66, p.troncoW * .55, p.troncoH * .7, 4), [0, b.hip + p.troncoH * .6, .012], metal, H.TORSO, [0, Math.PI / 4, 0], [1, 1, .72]);
     m.add(P.cil(p.troncoW * .5, p.troncoW * .62, .1, 8), [0, b.hip - .02, 0], roupa, H.HIPS);
-    /* elmo fechado com fenda e penacho */
-    m.add(P.cil(p.cabR * 1.08, p.cabR * 1.02, p.cabR * 1.25, 9), [0, b.hy - p.cabR * .05, 0], metalC, H.HEAD);
-    m.add(hemisferio(p.cabR * 1.08), [0, b.hy + p.cabR * .55, 0], metalC, H.HEAD);
-    m.add(P.caixa(p.cabR * 1.5, p.cabR * .16, .06), [0, b.hy + p.cabR * .1, p.cabR * .98], "#14100c", H.HEAD);
-    m.add(P.caixa(.04, p.cabR * .7, .05), [0, b.hy - p.cabR * .25, p.cabR * 1.02], escurecer(metalC, .8), H.HEAD);
-    for (let i = 0; i < 4; i++) m.add(P.cone(.05 - i * .006, .16, 5), [0, b.hy + p.cabR * 1.3 - i * .02, -i * .07], i % 2 ? clara : roupa, H.HEAD, [-1.1 - i * .2, 0, 0]);
+    /* elmo de cavaleiro com o rosto à mostra: cúpula, aro na testa,
+       proteção de nariz e de bochechas, e um penacho em arco na cor do dono */
+    const aro = escurecer(metalC, .7), R = p.cabR, topo = b.hy + R * .2;
+    m.add(hemisferio(R * 1.1, .5), [0, topo, -R * .03], metalC, H.HEAD);
+    m.add(P.cil(R * 1.12, R * 1.12, R * .17, 12), [0, topo + R * .02, -R * .03], aro, H.HEAD);
+    m.add(P.caixa(R * .15, R * .52, .04), [0, b.hy + R * .02, R * 1.0], metalC, H.HEAD);
+    for (const q of [1, -1]) m.add(P.caixa(.04, R * .72, R * .62), [q * R * .98, b.hy - R * .22, R * .18], metalC, H.HEAD, [0, q * .22, 0]);
+    m.add(P.caixa(R * 1.7, R * .62, .045), [0, b.hy - R * .18, -R * .96], metalC, H.HEAD, [.18, 0, 0]);
+    m.add(P.caixa(R * .12, R * .12, R * 1.8), [0, topo + R * 1.06, -R * .06], aro, H.HEAD);
+    for (let i = 0; i < 8; i++) {
+      const a = -.3 + i * .27, rp = R * 1.32;
+      m.add(P.esfera(.055 - i * .002, 0), [0, topo + Math.cos(a) * rp, -R * .05 - Math.sin(a) * rp], i % 3 === 2 ? clara : roupa, H.HEAD, [a, 0, 0], [.45, .8, 1.8]);
+    }
     /* capa */
     m.add(P.caixa(.3, .42, .025), [0, b.sh - .2, -p.troncoD * .5 - .03], escura, H.CAPE, [.08, 0, 0]);
     espada(m, -p.ombro, b.sh - p.bracoL - .03, metalA, eq.arma >= 7);
@@ -324,6 +331,50 @@ export function modeloMonstroHumano(kind: string): ModeloBase {
     m.add(deformar(P.caixa(.28, .24, .24), .05, 7), [-p.ombro, mao + .3, .44], "#6d6a66", H.ARM_R);
     s = 1.95; alt = 2.4;
     pontos.olho = { osso: H.HEAD, p: [0, (b.hy + p.cabR * .1), p.cabR * 1.2] };
+  } else if (kind === "skeleton") {
+    /* esqueleto: ossos brancos finos, costelas, crânio com órbitas, espada e escudo velhos */
+    p = { pernaH: .38, troncoH: .36, cabR: .16, ombro: .2, quadril: .08, troncoW: .26, troncoD: .16, bracoL: .36, bracoR: .035, pernaR: .04 };
+    const osso = C("#e8e2cc"), sujo = C("#b8b096");
+    const b = corpo(m, p, { pele: osso, roupa: osso, roupa2: sujo, calca: osso, bota: sujo, cinto: C("#5a4a3a") }, { semOlhos: true, ombreira: osso });
+    for (let i = 0; i < 4; i++) m.add(P.toro(p.troncoW * .42, .012, 3, 8), [0, b.hip + p.troncoH * (.35 + i * .15), 0], osso, H.TORSO, [Math.PI / 2, 0, 0], [1, 1, .7]);
+    for (const q of [1, -1]) m.add(P.esfera(p.cabR * .3, 0), [q * p.cabR * .36, b.hy + p.cabR * .08, p.cabR * .78], "#120e0a", H.HEAD);
+    m.add(P.caixa(p.cabR * .8, p.cabR * .3, p.cabR * .5), [0, b.hy - p.cabR * .7, p.cabR * .45], osso, H.HEAD);
+    for (let i = 0; i < 4; i++) m.add(P.caixa(.012, .03, .012), [(i - 1.5) * .025, b.hy - p.cabR * .55, p.cabR * .72], "#3a3228", H.HEAD);
+    const mao = b.sh - p.bracoL - .02;
+    m.add(P.caixa(.04, .025, .5), [-p.ombro, mao + .02, .3], "#8e8a80", H.ARM_R);
+    m.add(P.caixa(.15, .03, .03), [-p.ombro, mao + .02, .06], "#6a5a3a", H.ARM_R);
+    m.add(P.cil(.15, .15, .035, 8), [p.ombro + .06, mao + .12, .06], "#6a5236", H.ARM_L, [Math.PI / 2, .7, 0]);
+    s = 1.05; alt = 1.2; arma = "espada";
+  } else if (kind === "vampire") {
+    /* vampiro: pele pálida, capa alta de gola, cabelo penteado para trás e olhos vermelhos */
+    p = { pernaH: .4, troncoH: .4, cabR: .16, ombro: .22, quadril: .09, troncoW: .36, troncoD: .22, bracoL: .38, bracoR: .05, pernaR: .055 };
+    const pele = C("#d8d0d8"), preto = C("#1c1620"), vinho = C("#6a1020");
+    const b = corpo(m, p, { pele, roupa: preto, roupa2: vinho, calca: preto, bota: C("#0e0a10"), cinto: C("#b8a060") }, { semOlhos: true });
+    m.add(P.caixa(.36, .7, .03), [0, b.sh - .32, -p.troncoD * .55 - .02], vinho, H.CAPE, [.06, 0, 0]);
+    for (const q of [1, -1]) m.add(P.caixa(.03, .22, .16), [q * .15, b.sh + .08, -.04], vinho, H.TORSO, [0, q * .5, q * .25]);
+    m.add(hemisferio(p.cabR * 1.04, .45), [0, b.hy + p.cabR * .1, -p.cabR * .08], "#141016", H.HEAD);
+    m.add(P.cone(p.cabR * .3, p.cabR * .5, 4), [0, b.hy + p.cabR * .8, p.cabR * .55], "#141016", H.HEAD, [.5, 0, 0]);
+    for (const q of [1, -1]) {
+      m.add(P.caixa(p.cabR * .22, p.cabR * .12, .03), [q * p.cabR * .36, b.hy + p.cabR * .05, p.cabR * .9], "#ff2a3a", H.HEAD);
+      m.add(P.cone(.01, .04, 3), [q * .025, b.hy - p.cabR * .5, p.cabR * .85], "#ffffff", H.HEAD, [Math.PI, 0, 0]);
+    }
+    s = 1.15; alt = 1.35; arma = "clava";
+    pontos.olho = { osso: H.HEAD, p: [0, b.hy + p.cabR * .05, p.cabR * .95] };
+  } else if (kind === "behemoth") {
+    /* beemote: colosso de pedra escura, chifres para a frente, espinhos nas costas e punhos enormes */
+    p = { pernaH: .34, troncoH: .46, cabR: .15, ombro: .3, quadril: .13, troncoW: .56, troncoD: .38, bracoL: .44, bracoR: .1, pernaR: .1 };
+    const pele = C("#5a4e5e"), claro = C("#8a7a8e"), osso = C("#e0d4b8");
+    corcunda = .3;
+    const b = corpo(m, p, { pele, roupa: pele, roupa2: claro, calca: pele, bota: C("#2a2230"), cinto: C("#3a3040") }, { barriga: 1.1, semOlhos: true, ombreira: claro });
+    for (let i = 0; i < 5; i++) m.add(P.cone(.06, .22, 4), [(i % 2 ? .08 : -.08), b.sh - .05 - i * .08, -p.troncoD * .55], osso, H.TORSO, [-1.2, 0, 0]);
+    for (const q of [1, -1]) {
+      m.add(P.cone(.05, .3, 5), [q * p.cabR * .9, b.hy + p.cabR * .5, p.cabR * .3], osso, H.HEAD, [.9, 0, -q * .6]);
+      m.add(P.caixa(p.cabR * .3, p.cabR * .14, .03), [q * p.cabR * .38, b.hy + p.cabR * .1, p.cabR * .92], "#ff8a2a", H.HEAD);
+      m.add(P.esfera(p.bracoR * 1.9, 0), [q * p.ombro, b.sh - p.bracoL - p.bracoR * .6, 0], claro, q > 0 ? H.ARM_L : H.ARM_R);
+      m.add(P.cone(.05, .18, 4), [q * (p.ombro + .08), b.sh + .06, 0], osso, q > 0 ? H.ARM_L : H.ARM_R, [0, 0, -q * .8]);
+    }
+    s = 2.3; alt = 3.0; arma = "clava";
+    pontos.olho = { osso: H.HEAD, p: [0, b.hy + p.cabR * .1, p.cabR * .95] };
   } else {
     /* demônio */
     p = { pernaH: .4, troncoH: .44, cabR: .17, ombro: .28, quadril: .11, troncoW: .5, troncoD: .3, bracoL: .42, bracoR: .085, pernaR: .085 };

@@ -7,12 +7,12 @@
 import { useRef, useState } from "preact/hooks";
 import { G, W } from "../sim/state";
 import { ATQ_DICA, ATQ_MODOS, ATRIB, CUSTO, PONTO, SPELLS, TEAMS, magiasDe, type AttrKey, type SpellKey, type VocKey } from "../sim/data";
-import { BASES, BASES_EQUIP, COFRE_N, MOCHILA_N, NIVEL_MAX, PRECO_POCAO, SLOT_NOME, STAT_LONGO, type StatKey } from "../sim/itemsData";
+import { RARO_COR, RARO_NOME, BASES, BASES_LOJA, COFRE_N, MOCHILA_N, NIVEL_MAX, PRECO_POCAO, SLOT_NOME, STAT_LONGO, type StatKey } from "../sim/itemsData";
 import { recontar, comprarItem, comprarPocoes, corItem, depositarItem, depositarOuro, desequipar, descreveStats, ehPocao, equipar, equiparSeQuiser, espacoEm, espacoPocao, itemStat, livres, nomeItem, precoItem, precoVenda, sacarItem, sacarOuro, saldo, servePara, venderItem, vocNome, ITEM_TMP } from "../sim/items";
 import { beberPocao } from "../sim/spells";
 import { dmgFis, dmgMag, recalcular, somaGear, zerarBuild } from "../sim/stats";
 import { janelaNivel } from "../sim/player";
-import { deixarEquipe, EQUIPE_MAX, TATICAS } from "../sim/world";
+import { deixarEquipe, EQUIPE_MAX, expulsar, TATICAS } from "../sim/world";
 import { teamAlive } from "../sim/map";
 import { avisoDe, fx } from "../sim/fx";
 import { largar } from "../sim/session";
@@ -183,7 +183,7 @@ function Detalhe({ u, modo }: { u: Unit; modo: "equip" | "comerciante" | "banque
   }
   return (
     <div class="idet">
-      <div class="inm" style={{ color: corItem(it) }}>{nomeItem(it)}</div>
+      <div class="inm" style={{ color: B.raro ? RARO_COR[B.raro] : corItem(it) }}>{nomeItem(it)}{B.raro ? <small style={{ marginLeft: "6px", fontWeight: 700 }}>{RARO_NOME[B.raro]}</small> : null}</div>
       <div class="ist">{B.pocao ? descreveStats(it) : <>{SLOT_NOME[B.s!]} · {comparaStats(it as Item, at)}</>}</div>
       {!B.pocao && <div class={"ivoc" + (serve ? "" : " nao")}>{serve ? "Serve para " : "Não serve: só "}{vocNome(it)}</div>}
       {!B.pocao && onde !== "eq" && serve && <div class="ist">No corpo: {at ? <b>{nomeItem(at)}</b> : "nada"}</div>}
@@ -348,12 +348,16 @@ function PEquipe({ u }: { u: Unit }) {
           <button class="cb" disabled={u.dead || n < 2} onClick={() => { clique(); if (deixarEquipe(u)) atualizar(); }}>
             <b>Sair da equipe</b><small>{n > 1 ? (p && p.lider === u ? "você lidera" : "membro") : "sem equipe"}</small></button>
         </div>
-        <p class="dica">Quem entra na sua equipe deixa de ser alvo, ganha o círculo verde e recebe cura do druida. Equipe de no máximo {EQUIPE_MAX}.</p>
+        <Lin rot="Auto agrupar" sub={G.AUTO.agrupar ? "Chama sozinho quem está livre por perto até completar a equipe." : "Só entra quem você convidar."}>
+          <SimNao valor={G.AUTO.agrupar} aoEscolher={(v) => { G.AUTO.agrupar = v; salvarPref(); atualizar(); }} />
+        </Lin>
+        <p class="dica">Quem entra na sua equipe deixa de ser alvo, ganha o círculo verde e recebe cura do druida. Equipe de no máximo {EQUIPE_MAX}. {p && p.lider === u ? "Como líder, ninguém sai sem você querer." : "Num grupo liderado por outro, os membros entram e saem quando quiserem."}</p>
         {p && p.membros.length > 1 && <>
           <div class="secao">Membros</div>
           {p.membros.map((m) => (
             <Lin key={m.id} rot={<b style={{ color: m.cor.hi }}>{m.name}</b>} sub={m.K.pt + " · Lv " + m.lvl + (m.dead ? " · caído" : "") + (p.lider === m ? " · líder" : "")}>
               <span style={{ fontWeight: 800, color: m.hp / m.maxHp < .35 ? "var(--bad)" : "var(--ok)" }}>{Math.round(m.hp / m.maxHp * 100)}%</span>
+              {p.lider === u && m !== u && <DoisToques cls="btn" acao={() => { expulsar(u, m); atualizar(); }} filhos="Remover" armado="Confirmar" />}
             </Lin>
           ))}
         </>}
@@ -406,7 +410,7 @@ function PFicha({ u }: { u: Unit }) {
 /* ---------- [SYSTEM: NPC_LOJA] os três balcões ---------- */
 const CAT_LOJA: [SlotKey, string][] = [["arma", "Arma"], ["esc", "Escudo"], ["cab", "Capacete"], ["arm", "Armadura"], ["cal", "Calça"], ["bot", "Bota"], ["amu", "Amuleto"], ["ane", "Anel"]];
 let catLoja: SlotKey = "arma", baseLoja = "", subNpc = "comprar";
-function basesDaCat(u: Unit, s: SlotKey) { return BASES_EQUIP.filter((b) => BASES[b].s === s && (!BASES[b].voc || BASES[b].voc!.indexOf(u.kind as VocKey) >= 0)); }
+function basesDaCat(u: Unit, s: SlotKey) { return BASES_LOJA.filter((b) => BASES[b].s === s && (!BASES[b].voc || BASES[b].voc!.indexOf(u.kind as VocKey) >= 0)); }
 function PNpc({ u, id }: { u: Unit; id: string }) {
   void tick.value;
   if (id === "feiticeiro") return (

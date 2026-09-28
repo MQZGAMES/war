@@ -3,6 +3,7 @@
 import type { Unit } from "../../sim/types";
 import { modeloHeroi, modeloMonstroHumano, modeloNpc, type EquipVisual } from "./humanos";
 import { modeloAranha, modeloDragao, modeloGalinha, modeloQuad } from "./bichos";
+import { modeloCobra, modeloEscorpiao, modeloHidra } from "./bestiario";
 import type { ModeloBase } from "./rig";
 
 const cache = new Map<string, ModeloBase>();
@@ -24,7 +25,10 @@ export function modeloDe(u: Unit): ModeloBase {
   else if (u.kind === "hen") m = modeloGalinha();
   else if (u.kind === "spider") m = modeloAranha();
   else if (u.kind === "dragon") m = modeloDragao();
-  else if (["orc", "troll", "minotaur", "cyclops", "demon"].includes(u.kind)) m = modeloMonstroHumano(u.kind);
+  else if (u.kind === "snake") m = modeloCobra();
+  else if (u.kind === "scorpion") m = modeloEscorpiao();
+  else if (u.kind === "hydra") m = modeloHidra();
+  else if (["orc", "troll", "minotaur", "cyclops", "demon", "skeleton", "vampire", "behemoth"].includes(u.kind)) m = modeloMonstroHumano(u.kind);
   else m = modeloQuad(u.kind);
   cache.set(k, m);
   /* o cache de heróis não cresce sem fim: cores e níveis mudam */

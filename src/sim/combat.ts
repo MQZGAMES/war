@@ -7,20 +7,28 @@ import { avisoDe, ferirVisual, fx, tremer, ui } from "./fx";
 import { cabe, corItem, darItem, equiparSeQuiser, itemAleatorio, nomeItem, pocaoItem, recontar } from "./items";
 import { blockedPt, losU, queryRadius, queryRadius2, QBUF, QBUF2 } from "./map";
 import { agrediu, esquecerAmarelas, marcar, morteInjusta, travaMorte } from "./pk";
-import { aliado, anotarRancor, esquecerMorto, inimigo, odiar } from "./relations";
+import { aliado, anotarRancor, esquecerMorto, inimigo, KS_JANELA, odiar, registrarKs } from "./relations";
 import { clamp, dist, ri, rnd, rr } from "./rng";
 import { G, W, type Meteoro, type Projetil } from "./state";
 import { pontoDoPlano, pontoProporcional, recalcular } from "./stats";
 import type { Item, Unit } from "./types";
-import { SLOTS } from "./itemsData";
+import { BASES, RARO_COR, RARO_NOME, SLOTS } from "./itemsData";
 
 export function acerta(src: Unit, t: Unit) {
   const c = clamp(src.acerto - t.defesa * ESQUIVA, .25, ACERTO_MAX);
   return rnd() < c;
 }
 export function golpe(src: Unit, t: Unit, dano: number, magico: boolean, corpo?: boolean) {
-  if (acerta(src, t)) hit(src, t, dano, magico, corpo);
-  else { fx({ t: "miss", u: t }); marcar(src, t); }
+  if (acerta(src, t)) { hit(src, t, dano, magico, corpo); return true; }
+  fx({ t: "miss", u: t }); marcar(src, t);
+  return false;
+}
+/* veneno por segundo (flecha envenenada, cobra, escorpião, hidra) */
+export function envenenar(src: Unit | null, t: Unit, dps: number, dur: number) {
+  if (t.dead || t.pz) return;
+  if (t.venAte > W.simTime && t.venDps > dps) return;
+  t.venDps = dps; t.venAte = W.simTime + dur; t.venTick = W.simTime + 1; t.venSrc = src;
+  fx({ t: "bits", x: t.x, y: t.y, c: "#7fe05a", n: 10, spd: 1.3, h: .7 });
 }
 export function fxCura(u: Unit, v: number) { if (v >= 1) fx({ t: "heal", x: u.x, y: u.y, v: Math.round(v), u }); }
 
@@ -40,7 +48,15 @@ export function hit(src: Unit | null, t: Unit, dmg: number, magico: boolean, cor
   if (!src) { fx({ t: "dmg", u: t, v: Math.max(1, Math.round(d)), heavy: d > t.maxHp * .15 }); if (t.hp <= 0) kill(t, null); return; }
   src.dmg += d;
   if (t.hp < t.maxHp * .45 && t.think > .06) t.think = .06;
-  if (t.beast && !src.beast) { t.prov = src; odiar(t, src); t.think = Math.min(t.think, .05); }
+  if (t.beast && !src.beast) {
+    t.prov = src; odiar(t, src); t.think = Math.min(t.think, .05);
+    /* dono da presa: o primeiro que bateu; outro de fora que bate é KS */
+    const dono = t.dono;
+    if (!dono || dono.dead || W.simTime - t.donoT > KS_JANELA || dist(dono.x, dono.y, t.x, t.y) > 11) { t.dono = src; t.donoT = W.simTime; }
+    else if (dono !== src && !aliado(dono, src)) registrarKs(dono, src);
+    else if (aliado(dono, src)) t.donoT = W.simTime;
+    if (t.dono === src) t.donoT = W.simTime;
+  }
   if (t.ai) { t.ai.mem.lastDmgFrom = src; t.ai.mem.lastDmgT = W.simTime; }
   marcar(src, t);
   if (t === G.ctrl) revidarHook(t, src);
@@ -107,7 +123,7 @@ function repartirXp(t: Unit) {
 }
 
 /* ---------- [SYSTEM: LOOT] ---------- */
-const LOOT_POCAO = .18, LOOT_ITEM_BASE = .045, LOOT_ITEM_TIER = .02;
+const LOOT_POCAO = .18, LOOT_ITEM_BASE = .035, LOOT_ITEM_TIER = .015;
 function sorteiaDono(lista: { u: Unit; d: number }[], tot: number) {
   let r = rnd() * tot;
   for (const c of lista) { r -= c.d; if (r <= 0) return c.u; }
@@ -117,7 +133,10 @@ function largarLoot(t: Unit, lista: { u: Unit; d: number }[], tot: number) {
   const tier = (t.zona && t.zona.tier) || 1;
   if ((t.K.xpVal || 0) < 30 && rnd() < .6) return;
   if (rnd() < LOOT_POCAO) entregar(lista, tot, pocaoItem(rnd() < .55 ? "hp" : "mp", ri(1, 2 + (tier >> 1))), t);
-  if (rnd() < LOOT_ITEM_BASE + tier * LOOT_ITEM_TIER) entregar(lista, tot, itemAleatorio(tier), t);
+  /* criatura forte solta mais e melhor: força 0..1 pela experiência que vale */
+  const forca = Math.min(1, (t.K.xpVal || 0) * (t.xpMult || 1) / 2000);
+  if (rnd() < LOOT_ITEM_BASE + tier * LOOT_ITEM_TIER + forca * .25) entregar(lista, tot, itemAleatorio(tier, forca), t);
+  if (forca > .5 && rnd() < forca * .25) entregar(lista, tot, itemAleatorio(tier, forca), t);
 }
 function entregar(lista: { u: Unit; d: number }[], tot: number, it: Item | { b: string; n: number }, t: Unit) {
   let u: Unit | null = sorteiaDono(lista, tot);
@@ -127,7 +146,8 @@ function entregar(lista: { u: Unit; d: number }[], tot: number, it: Item | { b: 
   }
   if (!u) return false;
   darItem(u, it);
-  avisoDe(u, "Loot: " + nomeItem(it), corItem(it));
+  const rar = BASES[it.b].raro || 0;
+  avisoDe(u, "Loot: " + nomeItem(it) + (rar >= 2 ? " (" + RARO_NOME[rar] + ")" : ""), rar ? RARO_COR[rar] : corItem(it));
   fx({ t: "loot", u, it });
   equiparSeQuiser(u);
   return true;
@@ -295,11 +315,7 @@ export function updateProjectiles(DT: number) {
       } else if (p.kind === "veneno" && t && !t.dead && p.src) {
         if (acerta(p.src, t)) {
           hit(p.src, t, p.dmg, false);
-          if (!t.dead) {
-            t.venDps = p.dmg * VENENO.fator / VENENO.dur;
-            t.venAte = W.simTime + VENENO.dur; t.venTick = W.simTime + VENENO.tick; t.venSrc = p.src;
-            fx({ t: "bits", x: t.x, y: t.y, c: "#7fe05a", n: 12, spd: 1.4, h: .7 });
-          }
+          if (!t.dead) envenenar(p.src, t, p.dmg * VENENO.fator / VENENO.dur, VENENO.dur);
         } else { fx({ t: "miss", u: t }); marcar(p.src, t); }
       } else if (t && !t.dead && p.src) {
         if (p.certo) { marcar(p.src, t); hit(p.src, t, p.dmg, false); }

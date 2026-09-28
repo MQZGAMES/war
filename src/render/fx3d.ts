@@ -333,7 +333,7 @@ function tratar(e: FxEv) {
     case "blood": {
       const u = e.u;
       if (!perto(u.x, u.y)) break;
-      const cor = u.kind === "spider" ? "#6ab040" : u.kind === "demon" ? "#ffb040" : "#b0201c";
+      const cor = u.kind === "spider" || u.kind === "scorpion" ? "#6ab040" : u.kind === "demon" ? "#ffb040" : u.kind === "skeleton" ? "#e8e2cc" : u.kind === "hydra" || u.kind === "snake" ? "#7a9a30" : "#b0201c";
       const dx = e.src ? u.x - e.src.x : 0, dy = e.src ? u.y - e.src.y : 0, l = Math.hypot(dx, dy) || 1;
       ALFA.emitir(u.x, peito(u), u.y, { n: e.n, vx: dx / l * 1.2, vz: dy / l * 1.2, vy: 1.2, esp: 1.1, vida: .55, tam: .1, tamFim: .06, cor, grav: 9 });
       if (Math.random() < .35) decal(u.kind === "demon" ? "queimado" : "sangue", u.x + dx / l * .3, u.y + dy / l * .3, .3 + Math.random() * .2, 6);

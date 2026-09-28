@@ -51,10 +51,11 @@ export function aplicarAuto(a: Partial<typeof G.AUTO>) {
   if (a.ataque) Object.assign(G.AUTO.ataque, a.ataque);
   if (a.refil) Object.assign(G.AUTO.refil, a.refil);
   if (a.equip !== undefined) G.AUTO.equip = a.equip ? 1 : 0;
+  if (a.agrupar !== undefined) G.AUTO.agrupar = a.agrupar ? 1 : 0;
   if (!PERFIL_NOME[G.AUTO.ataque.modo]) G.AUTO.ataque.modo = "criaturas";
 }
 export function salvarPref() {
-  PREF.auto = { cura: { ...G.AUTO.cura }, ataque: { ...G.AUTO.ataque }, refil: { ...G.AUTO.refil }, equip: G.AUTO.equip, lider: 0 };
+  PREF.auto = { cura: { ...G.AUTO.cura }, ataque: { ...G.AUTO.ataque }, refil: { ...G.AUTO.refil }, equip: G.AUTO.equip, lider: 0, agrupar: G.AUTO.agrupar };
   gravarLocal(PREF_CHAVE, PREF);
 }
 
@@ -154,7 +155,7 @@ export function mundoDe() {
     setup: { livre: W.worldLivre, guildas: W.guildasN, tamanho: W.worldSize, monstros: W.worldBeastCap },
     guerra: W.guerra.map((l) => l.map((v) => Math.max(0, Math.round(v - W.simTime)))),
     comando: G.ctrl ? G.ctrl.id : 0,
-    auto: { cura: { ...G.AUTO.cura }, ataque: { ...G.AUTO.ataque }, refil: { ...G.AUTO.refil }, equip: G.AUTO.equip, lider: G.AUTO.lider },
+    auto: { cura: { ...G.AUTO.cura }, ataque: { ...G.AUTO.ataque }, refil: { ...G.AUTO.refil }, equip: G.AUTO.equip, lider: G.AUTO.lider, agrupar: G.AUTO.agrupar },
     jogadores, grupos,
     local: 0, heroi: "", nivel: 0,
   };

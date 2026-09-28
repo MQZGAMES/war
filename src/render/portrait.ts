@@ -7,6 +7,7 @@ import { criarRig } from "./models/rig";
 import { modeloDe, modeloVitrine } from "./models";
 import { animar, novaPose } from "./models/anim";
 import type { Unit } from "../sim/types";
+import { KINDS, type KindKey } from "../sim/data";
 import type { ModeloBase } from "./models/rig";
 
 let cena: THREE.Scene | null = null, cam: THREE.PerspectiveCamera;
@@ -25,7 +26,7 @@ function preparar() {
    num ângulo quaisquer, para conferir armas e animação de perto */
 export function fotoPose(kind: string, pose: Partial<ReturnType<typeof novaPose>>, giro: number, px = 256): string {
   preparar();
-  const base = modeloVitrine(kind, { c: "#c0392b", lo: "#5a1a14", hi: "#ff8a7a" });
+  const base = KINDS[kind as KindKey]?.beast ? modeloDe({ beast: true, kind } as unknown as Unit) : modeloVitrine(kind, { c: "#c0392b", lo: "#5a1a14", hi: "#ff8a7a" });
   const R = engine.renderer;
   const rt = new THREE.WebGLRenderTarget(px, px, { samples: 4 });
   rt.texture.colorSpace = THREE.SRGBColorSpace;

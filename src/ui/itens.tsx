@@ -28,6 +28,7 @@ export function ItemEm({ it }: { it: Coisa }) {
   return (
     <>
       <IcoItem ic={B.ic} cor={corItem(it)} />
+      {B.raro ? <i class={"rar r" + B.raro} /> : null}
       {ehPocao(it) ? <span class="qn">{(it as Pocao).n}</span> : <><span class="lv">+{(it as Item).k}</span><span class="st">{statCurto(it)}</span></>}
     </>
   );

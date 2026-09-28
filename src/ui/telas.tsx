@@ -262,7 +262,7 @@ export function Mundo() {
         </>}
         <button class="btn" style={{ width: "100%", marginTop: "6px" }} onClick={() => { clique(); sortearVocacoes(); suja(); }}><Ico n="dado" s={18} />Sortear vocações</button>
         <Lin col rot="Tamanho do mundo" sub={SETUP.tamanho === TAMANHO_MEGA ? "Mega: " + TAMANHO_MEGA + "² ladrilhos, mais pontos de caça e viagens longas." : undefined}><Seg itens={[[72, "72²"], [96, "96²"], [128, "128²"], [TAMANHO_MEGA, "Mega"]]} valor={SETUP.tamanho} aoEscolher={(v) => { SETUP.tamanho = v; suja(); }} /></Lin>
-        <Lin col rot="Monstros no mundo" sub="Mesmo em Poucos, todas as 14 criaturas aparecem."><Seg itens={[[120, "Poucos"], [220, "Normal"], [340, "Muitos"]]} valor={SETUP.monstros} aoEscolher={(v) => { SETUP.monstros = v; suja(); }} /></Lin>
+        <Lin col rot="Monstros no mundo" sub="Mesmo em Poucos, todas as 20 criaturas aparecem."><Seg itens={[[120, "Poucos"], [220, "Normal"], [340, "Muitos"]]} valor={SETUP.monstros} aoEscolher={(v) => { SETUP.monstros = v; suja(); }} /></Lin>
         <div style={{ height: "8px" }} />
         {G.ctrl
           ? <DoisToques cls="go" acao={gerar} filhos={SETUP.sujo ? "Aplicar e gerar mundo novo" : "Gerar mundo novo"} armado="Toque de novo: o mundo atual se perde" />

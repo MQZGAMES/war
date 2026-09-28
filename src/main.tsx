@@ -20,7 +20,7 @@ import { conta, enviarMundo, iniciarNuvem } from "./net/nuvem";
 const entrouPor = location.hash;
 import { startWorld, criarHeroi, SETUP } from "./sim/session";
 import { fotoPose } from "./render/portrait";
-import { novoQuadro, step } from "./sim/step";
+import { novoQuadro, PERF, step } from "./sim/step";
 import { G, W } from "./sim/state";
 import { irPara } from "./ui/store";
 import { ligarInterface, tick, abrirNpc, aviso } from "./ui/store";
@@ -46,7 +46,7 @@ function iniciar() {
   iniciarLaco();
   ganchoSave.aoSalvar = (m, forcar) => { void enviarMundo(m, forcar); };
   void iniciarNuvem().then((e) => { if (e) aviso(e, "#e0685a"); else if (conta.value && /access_token/.test(entrouPor)) aviso("Conectado à nuvem: " + conta.value.email, "#8fe6a8"); });
-  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__mesa = { engine, G, W, criarHeroi, irPara, laco, tick, abrirNpc, PREF, step, SETUP, startWorld, fotoPose, novoQuadro };
+  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__mesa = { engine, G, W, criarHeroi, irPara, laco, tick, abrirNpc, PREF, step, SETUP, startWorld, fotoPose, novoQuadro, PERF };
   const boot = document.getElementById("boot");
   if (boot) { boot.classList.add("fora"); setTimeout(() => boot.remove(), 700); }
   /* PWA: guarda o jogo para abrir offline (não no .html único nem no dev) */

@@ -4,8 +4,8 @@
    ================================================================ */
 import { PARAL_MULT, ST, VIGOR_MULT } from "./data";
 import { fx, ui } from "./fx";
-import { beastAttack, beastBaque, beastInvestida, golpe, hit, shoot, updateMeteors, updateOndas, updateProjectiles } from "./combat";
-import { blockedPt, buildGrid, cellsAround, desviarTroncos, emPZ, empurraTroncos, findPath, los, losU, nearestFree, refreshAlive, retaLivre } from "./map";
+import { beastAttack, beastBaque, beastInvestida, envenenar, golpe, hit, shoot, updateMeteors, updateOndas, updateProjectiles } from "./combat";
+import { blockedPt, buildGrid, cellsAround, desviarTroncos, separacao, emPZ, empurraTroncos, findPath, los, losU, nearestFree, refreshAlive, retaLivre } from "./map";
 import { caveiraPasso, pzAtiva } from "./pk";
 import { clamp, dist, dist2, rnd, rr } from "./rng";
 import { G, W, hooks } from "./state";
@@ -23,15 +23,23 @@ let pathBudget = 0;
 /* criatura, e quem tem trava fora da cidade, não pisam no calçamento:
    a rota já desvia da PZ em vez de esbarrar nela */
 export const barrado = (u: Unit) => !u.pz && (u.beast || pzAtiva(u));
-const EMP = { x: 0, y: 0 };
+const EMP = { x: 0, y: 0 }, SEP = { x: 0, y: 0 };
+/* medição em desenvolvimento: onde vai o tempo do passo */
+export const PERF = { pensar: 0, rota: 0, rotas: 0, total: 0, mundo: 0, mover: 0, fim: 0, grade: 0, atacar: 0 };
+const medir = import.meta.env.DEV;
 let quadro = 0;
 export function novoQuadro() { pathBudget = 8; }
 
 export function step() {
+  const t00 = medir ? performance.now() : 0;
   W.simTime += DT; quadro++;
+  const tg = medir ? performance.now() : 0;
   refreshAlive();
   buildGrid();
+  if (medir) PERF.grade += performance.now() - tg;
+  const tm = medir ? performance.now() : 0;
   worldStep();
+  if (medir) PERF.mundo += performance.now() - tm;
   const simTime = W.simTime;
   for (const u of W.units) {
     u.px = u.x; u.py = u.y;
@@ -97,11 +105,13 @@ export function step() {
       }
     }
     if (u.think <= 0) {
+      const tp = medir ? performance.now() : 0;
       u.think = .28 + rnd() * .14;
       if (u.beast) beastThink(u);
       else if (u === G.ctrl) ctrlThink(u, sq);
       else if (G.AUTO.lider && G.ctrl && lideraSobre(u)) seguirLider(u, sq);
       else worldThink(u, sq);
+      if (medir) PERF.pensar += performance.now() - tp;
     }
     // investida do cavaleiro
     if (u.charge > 0) {
@@ -118,6 +128,7 @@ export function step() {
       continue;
     }
     // andar
+    const tmv = medir ? performance.now() : 0;
     let dx = 0, dy = 0;
     if (u === G.ctrl && G.tvn) {
       dx = G.tvx; dy = G.tvy; u.ordem = null; u.path = null; u.alvoManual = null; u.npcAlvo = null;
@@ -129,7 +140,9 @@ export function step() {
         if (retaLivre(u.x, u.y, u.goal.x, u.goal.y, u.K.r, semPz)) { u.path = null; u.pi = 0; u.repath = .35 + rnd() * .25; }
         else if (pathBudget > 0) {
           u.repath = .55 + rnd() * .5; pathBudget--;
+          const tr = medir ? performance.now() : 0;
           u.path = findPath(u.x, u.y, u.goal.x, u.goal.y, semPz); u.pi = 0;
+          if (medir) { PERF.rota += performance.now() - tr; PERF.rotas++; }
         }
       }
       if (u.path && u.pi < u.path.length) {
@@ -153,17 +166,7 @@ export function step() {
     let sx = 0, sy = 0;
     const querAndar = Math.hypot(dx, dy) > .02;
     {
-      const ru = u.K.r;
-      cellsAround(u, (o) => {
-        if (o === u) return;
-        const rS = (ru + o.K.r) * 1.08 + .14;
-        const d2 = dist2(u.x, u.y, o.x, o.y);
-        if (d2 > rS * rS) return;
-        let d = Math.sqrt(d2), ex = u.x - o.x, ey = u.y - o.y;
-        if (d < 1e-3) { const a = (u.id * 2.39996) % 6.283; ex = Math.cos(a); ey = Math.sin(a); d = 1; }
-        const f = (rS - Math.min(d, rS)) / rS * (o.K.r / (ru + o.K.r)) * 2;
-        sx += ex / d * f; sy += ey / d * f;
-      });
+      separacao(u, SEP); sx = SEP.x; sy = SEP.y;
       /* troncos: desviar de lado antes de encostar; de perto, afastar */
       if (querAndar) { desviarTroncos(u, u.K.r, dx, dy, EMP); dx += EMP.x; dy += EMP.y; }
       empurraTroncos(u.x, u.y, u.K.r + .15, EMP);
@@ -200,7 +203,9 @@ export function step() {
       }
     } else { u.travT = 0; u.travX = u.x; u.travY = u.y; u.travas = 0; }
 
+    if (medir) PERF.mover += performance.now() - tmv;
     // atacar
+    const tat = medir ? performance.now() : 0;
     const t = u.target;
     if (t && !t.dead) {
       const d = dist(u.x, u.y, t.x, t.y);
@@ -218,11 +223,13 @@ export function step() {
           u.lunge = .3; u.swing = .42; u.swMax = .42;
           const dano = dmgFis(u) * rr(.85, 1.15);
           fx({ t: "swing", u, heavy: !!u.beast && u.K.threat > 1 });
-          golpe(u, t, dano, false, true);
+          const acertou = golpe(u, t, dano, false, true);
           if (u.beast && u.K.atk) {
+            const A = u.K.atk;
             beastBaque(u, t, dano);
-            const vn = u.K.atk.veneno;
-            if (vn && !t.dead) t.slow = Math.max(t.slow, vn.lento);
+            if (A.veneno && !t.dead) t.slow = Math.max(t.slow, A.veneno.lento);
+            if (acertou && A.peconha && !t.dead) envenenar(u, t, A.peconha.dps * (1 + (u.xpMult - 1) * .8), A.peconha.dur);
+            if (acertou && A.drena) { u.hp = Math.min(u.maxHp, u.hp + dano * A.drena * .6); fx({ t: "bits", x: u.x, y: u.y, c: "#c0303a", n: 6, spd: .8, h: .9 }); }
           }
         }
       }
@@ -233,11 +240,14 @@ export function step() {
         }
       }
     }
+    if (medir) PERF.atacar += performance.now() - tat;
   }
+  const tf = medir ? performance.now() : 0;
   for (const u of W.units) if (u.dead && !u.beast && u.reborn && u.reborn <= simTime) reviveUnit(u);
   updateProjectiles(DT);
   updateOndas(DT);
   updateMeteors(DT);
+  if (medir) { PERF.fim += performance.now() - tf; PERF.total += performance.now() - t00; }
 }
 
 /* [SYSTEM: CIDADE] barreira da PZ: criatura e quem tem trava não pisam

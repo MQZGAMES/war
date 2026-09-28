@@ -9,6 +9,8 @@ import { vnoise } from "../sim/rng";
 import { CID_R } from "../sim/map";
 import { canvasTex, cor, h2, U } from "./util";
 
+/* quanto cada ladrilho é estrada (0..1): a grama evita as trilhas */
+export const ESTRADA = { m: new Float32Array(0) };
 export const T = {
   N: 0,
   H: new Float32Array(0),          // altura por vértice, (N+1)²
@@ -78,6 +80,7 @@ export function construirTerreno(): THREE.Group {
     return { ax: c.x + Math.cos(a) * (CID_R - .5), ay: c.y + Math.sin(a) * (CID_R - .5), bx: z.x, by: z.y, w: .55 + z.tier * .03 };
   });
   const tmp = new THREE.Color();
+  ESTRADA.m = new Float32Array(N * N);
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     const i = y * N + x, v = tc[i];
     const cc = new THREE.Color();
@@ -99,7 +102,7 @@ export function construirTerreno(): THREE.Group {
       for (const t of trilhas) {
         const wob = (vnoise(x * .31 + t.bx, y * .31 + t.by) - .5) * 1.1;
         const d = distSeg(x + .5 + wob, y + .5 + wob, t.ax, t.ay, t.bx, t.by);
-        if (d < t.w + .6) cc.lerp(TRILHA, Math.max(0, Math.min(1, (t.w + .6 - d) / .8)) * .8);
+        if (d < t.w + .6) { const k = Math.max(0, Math.min(1, (t.w + .6 - d) / .8)); cc.lerp(TRILHA, k * .8); ESTRADA.m[i] = Math.max(ESTRADA.m[i], k); }
       }
       /* sombra de copa: chão mais escuro em volta das árvores */
       if (W.tronco[i]) cc.multiplyScalar(.78);
@@ -109,7 +112,7 @@ export function construirTerreno(): THREE.Group {
   /* borda da praça: terra batida em volta do calçamento */
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     const d = Math.hypot(x + .5 - c.x, y + .5 - c.y);
-    if (d > CID_R && d < CID_R + 1.6 && tc[y * N + x] < 4) tileCor[y * N + x].lerp(TRILHA, .55 * (1 - (d - CID_R) / 1.6));
+    if (d > CID_R && d < CID_R + 1.6 && tc[y * N + x] < 4) { tileCor[y * N + x].lerp(TRILHA, .55 * (1 - (d - CID_R) / 1.6)); ESTRADA.m[y * N + x] = Math.max(ESTRADA.m[y * N + x], .8); }
   }
 
   /* ---------- malha ---------- */

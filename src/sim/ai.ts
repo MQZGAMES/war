@@ -13,7 +13,8 @@ import { aliado, inimigo, odeia, PANICO_R } from "./relations";
 import { clamp, dist, dist2, rnd, rr } from "./rng";
 import { beberPocao, lancarBolaFogo, lancarBumerangue, lancarCerteiro, lancarChuva, lancarCura, lancarInvestida, lancarMeteoro, lancarNevasca, lancarRelampago, lancarTerremoto, lancarTrevas, lancarTriplo, lancarVeneno, podeMagia } from "./spells";
 import { W } from "./state";
-import { MAG_DANO } from "./data";
+import { MAG_DANO, magiasDe, type VocKey } from "./data";
+import { planejarMagia } from "./tatica";
 import type { Pt, Squad, Unit } from "./types";
 import { goTo, setState } from "./unit";
 
@@ -246,73 +247,21 @@ export function unitThink(u: Unit, sq: Squad) {
     propor(A_AVANCAR, UTIL.avancar * .8, f.x, f.y);
   }
 
-  // --- magias pontuadas ---
+  // --- magias: o planejador compara área, alvo único e custo de mana ---
   const reserva = (vida < .55) ? CUSTO.cura : 0;
   let hab: SpellKey | null = null, habSc = 0;
-  if (u.isArcher && P.closest && P.closestD <= K.range && podeMagia(u, "triplo")) { hab = "triplo"; habSc = UTIL.habilidade * .6; }
-  else if (u.isArcher && P.closest && P.closestD <= K.range && podeMagia(u, "certeiro")) { hab = "certeiro"; habSc = UTIL.habilidade * .42; }
-  if (u.isKnight && podeMagia(u, "terremoto") && countNearP(TERREMOTO.raio * .9) >= 2) { hab = "terremoto"; habSc = UTIL.habilidade * 1.2; }
-  if (u.kind === "mage" && u.mp >= CUSTO.meteoro + reserva && podeMagia(u, "meteoro")) {
-    const a = meteorSpot(u);
-    if (a) { hab = "meteoro"; habSc = UTIL.habilidade * 1.3; ACTM.x = a.x; ACTM.y = a.y; }
+  ACT_ALVO.u = null;
+  if (u.kind === "druid" && u.mp >= CUSTO.chuva && podeMagia(u, "chuva")) {
+    const a = chuvaSpot(u);
+    if (a) { hab = "chuva"; habSc = UTIL.habilidade * 1.35; ACTM.x = a.x; ACTM.y = a.y; }
   }
-  if (u.isArcher && P.closest && P.closestD <= K.range && P.closest.venAte <= W.simTime && u.mp >= CUSTO.veneno + reserva && podeMagia(u, "veneno") && (!hab || hab === "certeiro")) {
-    hab = "veneno"; habSc = UTIL.habilidade * .5;
-  }
-  /* bola de fogo quando o alvo tem companhia; senão, Trevas */
-  if (!hab && u.kind === "mage" && P.closest && P.closestD <= K.range && u.mp >= CUSTO.bolaFogo + reserva && podeMagia(u, "bolaFogo") && vizinhos(u, P.closest, EXPLOSAO.raio) >= 2) { hab = "bolaFogo"; habSc = UTIL.habilidade * 1.05; }
-  if (!hab && u.kind === "mage" && P.closest && u.mp >= CUSTO.trevas + reserva && P.closestD <= K.range && podeMagia(u, "trevas")) { hab = "trevas"; habSc = UTIL.habilidade; }
-  if (!hab && u.kind === "mage" && P.closest && P.closestD <= K.range && u.mp >= CUSTO.bolaFogo + reserva + 20 && podeMagia(u, "bolaFogo")) { hab = "bolaFogo"; habSc = UTIL.habilidade * .8; }
-  if (u.kind === "druid") {
-    let presa: Unit | null = null, pd = 1e9;
-    if (podeMagia(u, "nevasca") && u.mp >= CUSTO.nevasca) {
-      const m = queryRadius(u.x, u.y, NEVASCA.alcance);
-      for (let i = 0; i < m; i++) {
-        const e = QBUF[i];
-        if (!inimigo(u, e) || e.dead || e.paral > 0) continue;
-        const foge = e.st === ST.RETREAT || e.st === ST.REGROUP || (e.hp < e.maxHp * .45 && e.moving && e.st !== ST.ENGAGE);
-        if (!foge || !losU(u, e)) continue;
-        const d = dist(u.x, u.y, e.x, e.y);
-        if (d < pd) { pd = d; presa = e; }
-      }
+  if (!hab) {
+    const alvoMagia = tgt || P.closest;
+    const pl = planejarMagia(u, alvoMagia, magiasDe(u.kind as VocKey), reserva);
+    if (pl) {
+      hab = pl.k; habSc = UTIL.habilidade * (1 + Math.min(.6, pl.sc / 80));
+      ACTM.x = pl.x; ACTM.y = pl.y; ACT_ALVO.u = pl.alvo;
     }
-    if (presa) {
-      const av = Math.min(1.8, presa.K.spd * MET_QUEDA * 1.6);
-      hab = "nevasca"; habSc = UTIL.habilidade * 1.55;
-      ACTM.x = clamp(presa.x + Math.cos(presa.moveA) * av, .5, W.N - .5);
-      ACTM.y = clamp(presa.y + Math.sin(presa.moveA) * av, .5, W.N - .5);
-    }
-    if (!hab && u.mp >= CUSTO.chuva && podeMagia(u, "chuva")) {
-      const a = chuvaSpot(u);
-      if (a) { hab = "chuva"; habSc = UTIL.habilidade * 1.35; ACTM.x = a.x; ACTM.y = a.y; }
-    }
-    if (!hab && u.mp >= CUSTO.nevasca && P.closest && P.closestD <= NEVASCA.alcance && podeMagia(u, "nevasca")) {
-      const a = meteorSpot(u) || P.closest;
-      hab = "nevasca"; habSc = UTIL.habilidade * 1.1; ACTM.x = a.x; ACTM.y = a.y;
-    }
-  }
-  if (!hab && u.kind === "druid" && P.closest && P.closestD <= K.range && u.mp >= CUSTO.relampago + reserva + 10 && podeMagia(u, "relampago")) {
-    hab = "relampago"; habSc = UTIL.habilidade * (vizinhos(u, P.closest, EXPLOSAO.raio) >= 2 ? 1.05 : .8);
-  }
-  /* cavaleiro: a lâmina alcança quem ele ainda não chegou a tocar */
-  if (!hab && u.isKnight && tgt && u.mp >= CUSTO.bumerangue + reserva && podeMagia(u, "bumerangue")) {
-    const de = dist(u.x, u.y, tgt.x, tgt.y);
-    if (de > K.range + .4 && de <= BUMERANGUE.alcance && losU(u, tgt)) { hab = "bumerangue"; habSc = UTIL.habilidade * .95; ACT_ALVO.u = tgt; }
-  }
-  if (!hab && !K.keep && u.charge <= 0 && u.mp >= CUSTO.investida && podeMagia(u, "investida")) {
-    let vitima: Unit | null = null, vd = 1e9;
-    const m = queryRadius(u.x, u.y, 7.5);
-    for (let i = 0; i < m; i++) {
-      const e = QBUF[i];
-      if (!inimigo(u, e) || e.beast || !e.K.keep) continue;
-      const de = dist(u.x, u.y, e.x, e.y);
-      if (de > 2.6 && de < vd && losU(u, e)) { vd = de; vitima = e; }
-    }
-    if (!vitima && tgt && !tgt.beast) {
-      const de = dist(u.x, u.y, tgt.x, tgt.y);
-      if (de > 2.6 && de < 7.5) vitima = tgt;
-    }
-    if (vitima) { hab = "investida"; habSc = UTIL.habilidade * 1.15; ACT_ALVO.u = vitima; }
   }
   if (hab) propor(A_HABILIDADE, habSc, ACTM.x, ACTM.y, hab);
   executar(u, sq, tgt);
@@ -366,8 +315,7 @@ function executar(u: Unit, sq: Squad, tgt: Unit | null) {
     case A_HABILIDADE: {
       const k = ACT.alvo as SpellKey;
       const guardado = u.target;
-      if ((k === "investida" || k === "bumerangue") && ACT_ALVO.u) u.target = ACT_ALVO.u;
-      if (k === "triplo" || k === "certeiro" || k === "trevas" || k === "veneno" || k === "bolaFogo" || k === "relampago") u.target = u.ai.p.closest || guardado;
+      if (ACT_ALVO.u && !ACT_ALVO.u.dead) u.target = ACT_ALVO.u;
       let ok = false;
       if (k === "meteoro") ok = lancarMeteoro(u, ACT.x, ACT.y);
       else if (k === "nevasca") ok = lancarNevasca(u, ACT.x, ACT.y);

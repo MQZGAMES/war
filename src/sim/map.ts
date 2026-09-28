@@ -233,7 +233,7 @@ export function retaLivre(x0: number, y0: number, x1: number, y1: number, r: num
       const gx = (px + nx * k) | 0, gy = (py + ny * k) | 0;
       if (gx < 0 || gy < 0 || gx >= N || gy >= N) return false;
       const j = gy * N + gx;
-      if (solid[j] || (semPz && pzMask[j])) return false;
+      if (solid[j] || (semPz && pzMask[j]) || (k === 0 && W.tronco[j] && i < steps)) return false;
     }
   }
   return true;
@@ -278,6 +278,8 @@ export function desviarTroncos(u: { x: number; y: number; id: number }, r: numbe
   }
   return out;
 }
+/* a rota desvia de troncos (o empurrão deles brigaria com o caminho):
+   passar por um custa caro, então só acontece quando não há volta */
 export function findPath(sx: number, sy: number, tx: number, ty: number, semPz = false): Pt[] | null {
   const N = W.N, { solid, pzMask, tronco } = W;
   const s = nearestFree(sx, sy), t = nearestFree(tx, ty, semPz);
@@ -304,10 +306,11 @@ export function findPath(sx: number, sy: number, tx: number, ty: number, semPz =
       if (!livre(j)) continue;
       if (k > 3 && (!livre(idx(cx + NB[k][0], cy)) || !livre(idx(cx, cy + NB[k][1])))) continue;
       /* passar rente a tronco custa um pouco: a rota prefere o campo aberto */
-      const ng = g + NB[k][2] + (tronco[j] ? .6 : 0);
+      if (k > 3 && (tronco[idx(cx + NB[k][0], cy)] || tronco[idx(cx, cy + NB[k][1])])) continue;
+      const ng = g + NB[k][2] + (tronco[j] && j !== ti ? 3 : 0);
       if (stamp[j] === stampV && gS[j] <= ng) continue;
       stamp[j] = stampV; gS[j] = ng; came[j] = cur;
-      hpush(j, ng + oct(nx, ny) * 1.06);
+      hpush(j, ng + oct(nx, ny) * 1.2);
     }
   }
   const out: Pt[] = []; let c = best, guard = 0;
@@ -362,15 +365,20 @@ export function losU(a: Unit, b: Unit) {
    ============================================================ */
 const CELL = 2;
 let cellN = 0, cells: Unit[][] = [];
+/* só as células ocupadas no passo anterior são esvaziadas: no mapa Mega
+   são ~9 mil células para ~250 unidades */
+const usadas: number[] = [];
 export function buildGrid() {
   cellN = Math.ceil(W.N / CELL);
   const need = cellN * cellN;
-  if (cells.length !== need) { cells = new Array(need); for (let i = 0; i < need; i++) cells[i] = []; }
-  else for (let i = 0; i < need; i++) cells[i].length = 0;
+  if (cells.length !== need) { cells = new Array(need); for (let i = 0; i < need; i++) cells[i] = []; usadas.length = 0; }
+  else { for (let k = 0; k < usadas.length; k++) cells[usadas[k]].length = 0; usadas.length = 0; }
   for (const u of W.units) {
     if (u.dead) continue;
     const gx = clamp((u.x / CELL) | 0, 0, cellN - 1), gy = clamp((u.y / CELL) | 0, 0, cellN - 1);
-    cells[gy * cellN + gx].push(u);
+    const c = cells[gy * cellN + gx];
+    if (!c.length) usadas.push(gy * cellN + gx);
+    c.push(u);
   }
 }
 export const QBUF: Unit[] = []; export let qN = 0;
@@ -398,6 +406,29 @@ export function queryRadius2(x: number, y: number, r: number) {
     for (let k = 0; k < b.length; k++) { const o = b[k]; if (dist2(x, y, o.x, o.y) <= r2) QBUF2[q2N++] = o; }
   }
   return q2N;
+}
+/* separação sem alocar: soma o empurrão dos vizinhos nas 3×3 células */
+export function separacao(u: Unit, out: { x: number; y: number }) {
+  out.x = 0; out.y = 0;
+  const ru = u.K.r;
+  const gx = clamp((u.x / CELL) | 0, 0, cellN - 1), gy = clamp((u.y / CELL) | 0, 0, cellN - 1);
+  const y1 = Math.min(cellN - 1, gy + 1), x1 = Math.min(cellN - 1, gx + 1);
+  for (let ay = Math.max(0, gy - 1); ay <= y1; ay++) for (let ax = Math.max(0, gx - 1); ax <= x1; ax++) {
+    const b = cells[ay * cellN + ax];
+    for (let k = 0; k < b.length; k++) {
+      const o = b[k];
+      if (o === u) continue;
+      const ro = o.K.r, rS = (ru + ro) * 1.08 + .14;
+      let ex = u.x - o.x, ey = u.y - o.y;
+      const d2 = ex * ex + ey * ey;
+      if (d2 > rS * rS) continue;
+      let d = Math.sqrt(d2);
+      if (d < 1e-3) { const a = (u.id * 2.39996) % 6.283; ex = Math.cos(a); ey = Math.sin(a); d = 1; }
+      const f = (rS - Math.min(d, rS)) / rS * (ro / (ru + ro)) * 2;
+      out.x += ex / d * f; out.y += ey / d * f;
+    }
+  }
+  return out;
 }
 /* vizinhos de separação: as 3×3 células em volta */
 export function cellsAround(u: Unit, fn: (o: Unit) => void) {

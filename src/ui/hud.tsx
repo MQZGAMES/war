@@ -176,7 +176,7 @@ function Acao() {
         <Ico n={{ desligado: "proibido", criaturas: "pata", justiceiro: "balanca", maldoso: "caveira", todos: "cruzadas" }[A.modo]} s={20} />
       </button>
       <button class="redondo hub" style={{ position: "absolute", pointerEvents: "auto" }} aria-label="Painéis"
-        onClick={() => { clique(); painel.value ? fecharDeck() : abrirDeck(); }}>
+        onClick={() => { clique(); painel.value ? fecharDeck() : abrirDeck("equip"); }}>
         <Ico n="mochila" s={24} />{u.pts > 0 && <span class="pt">{u.pts}</span>}
       </button>
     </>

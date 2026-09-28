@@ -159,7 +159,7 @@ export function ligarInterface() {
       else if (k === "q") beber("hp");
       else if (k === "e") beber("mp");
       else if (k === "f" || k === "tab") atacar();
-      else if (k === "m") { if (painel.value) fecharDeck(); else abrirDeck(); }
+      else if (k === "m") { if (painel.value) fecharDeck(); else abrirDeck("equip"); }
     },
     voltar: teclaVoltar,
     noJogo: () => tela.value === "jogo",
