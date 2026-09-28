@@ -37,12 +37,24 @@ function cliente() {
   return pronto;
 }
 
-export async function iniciarNuvem() {
+/* link do e-mail vencido ou já usado volta com #error=...; devolve o
+   motivo para a interface avisar e limpa o endereço */
+function erroDoLink(): string {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (!h.get("error")) return "";
+  history.replaceState(null, "", location.pathname + location.search);
+  const cod = h.get("error_code") || "";
+  return cod === "otp_expired" ? "O link do e-mail venceu ou já foi usado. Peça um novo em Nuvem e use só o mais recente."
+    : "O login pelo e-mail não completou (" + (h.get("error_description") || cod || "erro") + "). Peça um novo link.";
+}
+export async function iniciarNuvem(): Promise<string> {
+  const erro = erroDoLink();
   const c = await cliente();
-  if (!c) return;
+  if (!c) return erro;
   const { data } = await c.auth.getSession();
   const u = data.session?.user;
   if (u) { conta.value = { id: u.id, email: u.email || "" }; await lerMeta(); }
+  return erro;
 }
 
 export async function lerMeta() {
