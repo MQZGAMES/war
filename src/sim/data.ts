@@ -357,9 +357,15 @@ export const NOMES_F = ["Inês", "Joana", "Urraca", "Elvira", "Sancha", "Mor", "
   "Genebra", "Lourença", "Marinha", "Oroana", "Sibila", "Estefânia", "Berengária", "Iria", "Toda", "Aldara",
   "Mécia", "Châmoa", "Ximena", "Elvira", "Gontinha"].filter((n, i, l) => l.indexOf(n) === i);
 export const FIRST_NAMES = [...NOMES_M, ...NOMES_F];
-/* o sexo sai do nome (sem o número de repetição): "Isabel 2" é mulher */
+/* sobrenomes para quando os nomes simples acabam: "Isabel de Lima" */
+export const SOBRENOMES = ["Mendes", "Soares", "Pires", "Nunes", "Peres", "Gomes", "Viegas", "Moniz", "Froiaz",
+  "Ermiges", "Pais", "Fafes", "Sanches", "Godins", "Ramires", "Bermudes", "Afonso", "Vasques", "Lourenço",
+  "Esteves", "de Braga", "de Lima", "de Sousa", "de Riba", "de Castro", "da Maia", "de Baião", "de Góis",
+  "de Tavares", "de Ourém", "de Leiria", "do Vale", "da Torre", "da Ponte", "do Monte", "da Serra",
+  "Pereira", "Coelho", "Barreto", "Cunha", "Correia", "Pacheco", "Valente", "Bravo", "Lobo", "Falcão"];
+/* o sexo sai do primeiro nome: "Isabel de Lima" (ou o antigo "Isabel 2") é mulher */
 export function sexoDoNome(nome: string): Sexo {
-  const base = nome.replace(/\s+\d+$/, "").trim();
+  const base = nome.replace(/\s+\d+$/, "").trim().split(/\s+/)[0];
   return NOMES_F.indexOf(base) >= 0 ? "f" : "m";
 }
 export function nomeAoAcaso(s: Sexo) { const L = s === "f" ? NOMES_F : NOMES_M; return L[Math.floor(Math.random() * L.length)]; }

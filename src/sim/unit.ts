@@ -1,5 +1,5 @@
 /* Criação de unidade, cores, nomes e utilidades de estado. */
-import { ACERTO_BASE, ACERTO_BICHO, FAUNA, FIRST_NAMES, GUILDA_H, sexoDoNome, KINDS, POSTURAS, ST, TEAMS, type Estado, type KindKey, type Paleta, type VocKey } from "./data";
+import { ACERTO_BASE, ACERTO_BICHO, FAUNA, FIRST_NAMES, GUILDA_H, SOBRENOMES, sexoDoNome, KINDS, POSTURAS, ST, TEAMS, type Estado, type KindKey, type Paleta, type VocKey } from "./data";
 import { clamp, rnd, rr } from "./rng";
 import { W } from "./state";
 import { sorteiaPlano } from "./stats";
@@ -35,19 +35,21 @@ export function corLivre() {
 export function corGuilda(t: number) { return paleta((GUILDA_H[t] + rr(-12, 12) + 360) % 360, 60 + rr(-8, 10), rr(-7, 7)); }
 export function corPorMatiz(h: number) { return h === 400 ? BRANCO_PRETO : h === 401 ? PRETO_BRANCO : paleta(h, 68); }
 
-/* ---------- nomes: repetido só depois de esgotar a lista ---------- */
+/* ---------- nomes: únicos; esgotados os simples, vêm com sobrenome ---------- */
 let namePool: string[] = [], nameI = 0;
+function embaralha(l: string[]) {
+  for (let i = l.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = l[i]; l[i] = l[j]; l[j] = t; }
+  return l;
+}
 export function resetNames() {
-  namePool = FIRST_NAMES.slice();
-  for (let i = namePool.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = namePool[i]; namePool[i] = namePool[j]; namePool[j] = t; }
+  const compostos: string[] = [];
+  for (const n of FIRST_NAMES) for (const s of SOBRENOMES) if (s !== n) compostos.push(n + " " + s);
+  namePool = [...embaralha(FIRST_NAMES.slice()), ...embaralha(compostos)];
   nameI = 0;
 }
 export function nextName() {
   if (!namePool.length) resetNames();
-  const n = namePool[nameI % namePool.length];
-  const volta = Math.floor(nameI / namePool.length);
-  nameI++;
-  return volta ? n + " " + (volta + 1) : n;
+  return namePool[nameI++ % namePool.length];
 }
 
 export const TRAVA_TESTE = 3, TRAVA_MIN = .45, TRAVA_VOLTA = 8;
