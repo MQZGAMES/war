@@ -342,7 +342,7 @@ export function Ajustes() {
               mudarQualidade(v === "auto" ? qualidadeInicial() : v as "baixa" | "media" | "alta");
             })} />
           </Lin>
-          <Lin rot="Efeitos de tela" sub="tremor ao apanhar e nas explosões"><SimNao valor={PREF.efeitos} aoEscolher={(v) => s(() => { PREF.efeitos = v; })} /></Lin>
+          <Lin rot="Efeitos de tela" sub="tremor nas explosões"><SimNao valor={PREF.efeitos} aoEscolher={(v) => s(() => { PREF.efeitos = v; })} /></Lin>
           <Lin rot="Vibrar ao apanhar" sub="só em aparelhos que vibram"><SimNao valor={PREF.vibrar} aoEscolher={(v) => s(() => { PREF.vibrar = v; })} /></Lin>
           <Lin rot="Dia e noite" sub="um dia inteiro a cada nove minutos"><SimNao valor={PREF.diaNoite} aoEscolher={(v) => s(() => { PREF.diaNoite = v; })} /></Lin>
           <Lin rot="Câmera" sub="automática segue o herói; livre deixa arrastar a vista"><Seg itens={[[1, "Segue"], [0, "Livre"]]} valor={G.autoCam ? 1 : 0} aoEscolher={(v) => s(() => { G.autoCam = !!v; PREF.cam = v ? "auto" : "livre"; })} /></Lin>

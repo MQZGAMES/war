@@ -3,7 +3,7 @@
    projéteis, meteoros, ondas de fogo e o que cada monstro faz.
    ================================================================ */
 import { ACERTO_MAX, BUMERANGUE, CHUVA_R, ESQUIVA, MET_R, NEVASCA, VENENO, WORLD_REBORN, type KindDef } from "./data";
-import { avisoDe, ferirVisual, fx, tremer, ui } from "./fx";
+import { avisoDe, ferirVisual, fx, ui } from "./fx";
 import { cabe, corItem, darItem, equiparSeQuiser, itemAleatorio, nomeItem, pocaoItem, recontar } from "./items";
 import { blockedPt, losU, queryRadius, queryRadius2, QBUF, QBUF2 } from "./map";
 import { agrediu, esquecerAmarelas, marcar, morteInjusta, travaMorte } from "./pk";
@@ -179,7 +179,6 @@ export function kill(t: Unit, src: Unit | null) {
   }
   t.moving = 0; t.swing = 0; t.lunge = 0; t.draw = 0;
   fx({ t: "death", u: t, src });
-  if (t === G.ctrl) tremer(7);
   esquecerMorto(t);
   repartirXp(t);
   if (src) src.kills++;

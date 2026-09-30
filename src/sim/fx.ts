@@ -51,5 +51,4 @@ export function tremer(f: number) { fx({ t: "shake", f }); }
 export function ferirVisual(t: Unit, d: number, src: Unit | null) {
   t.flash = .16; t.squash = .18;
   if (src) { t.hitX = t.x - src.x; t.hitY = t.y - src.y; }
-  if (t === G.ctrl && d > t.maxHp * .08) tremer(2 + Math.min(6, d / t.maxHp * 30));
 }
