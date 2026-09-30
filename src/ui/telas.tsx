@@ -34,7 +34,7 @@ export function Titulo() {
       <div class="titulo-box">
         <div class="logo">
           <div class="orn"><i /><Ico n="cruzadas" s={22} /><i /></div>
-          <h1>Mesa de<br />Guerra</h1>
+          <h1>War</h1>
           <p>RPG de mundo aberto · diorama 3D</p>
         </div>
         <div class="menuT">

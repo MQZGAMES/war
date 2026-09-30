@@ -1,6 +1,6 @@
 {
-  "name": "Mesa de Guerra",
-  "short_name": "Mesa de Guerra",
+  "name": "War",
+  "short_name": "War",
   "description": "RPG de mundo aberto num diorama 3D. Mobile first, no navegador, offline.",
   "lang": "pt-BR",
   "start_url": "./",
