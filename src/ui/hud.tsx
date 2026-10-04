@@ -178,7 +178,7 @@ function Acao() {
         <Ico n={{ desligado: "proibido", criaturas: "pata", justiceiro: "balanca", maldoso: "caveira", todos: "cruzadas" }[A.modo]} s={20} />
       </button>
       {/* [SYSTEM: PVP] liga e desliga o dano em personagens */}
-      <button class={"pvpb" + (A.pvp ? " on" : "")} aria-pressed={!!A.pvp} aria-label={"PvP " + (A.pvp ? "ligado" : "desligado")}
+      <button class={"redondo pvpb" + (A.pvp ? " on" : "")} style={{ position: "absolute", pointerEvents: "auto" }} aria-pressed={!!A.pvp} aria-label={"PvP " + (A.pvp ? "ligado" : "desligado")}
         onClick={() => {
           clique();
           if (A.pvp) {
@@ -187,7 +187,7 @@ function Acao() {
             avisoDe(u, "PvP desligado · ninguém é ferido" + (antes !== A.modo ? " · auto ataque em Criaturas" : ""), "#8fe6a8");
           } else ligarPvp(u, "magia de área e revide acertam personagens");
         }}>
-        <Ico n={A.pvp ? "cruzadas" : "paz"} s={15} /><b>PvP</b><small>{A.pvp ? "on" : "off"}</small>
+        <Ico n={A.pvp ? "cruzadas" : "paz"} s={20} />
       </button>
       <button class="redondo hub" style={{ position: "absolute", pointerEvents: "auto" }} aria-label="Painéis"
         onClick={() => { clique(); painel.value ? fecharDeck() : abrirDeck("equip"); }}>

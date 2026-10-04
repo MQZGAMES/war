@@ -288,13 +288,8 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 5px; border-radius: 5
 .hub { position: absolute; right: calc(var(--sar) + 14px); bottom: calc(var(--sab) + 234px); width: 54px; height: 54px; }
 .atqm { position: absolute; right: calc(var(--sar) + 78px); bottom: calc(var(--sab) + 238px); width: 48px; height: 48px; color: var(--dim); }
 .atqm.ativo { color: var(--gold-hi); border-color: var(--gold-lo); } .atqm.maldoso { color: #ff5a6c; border-color: rgba(226, 57, 79, .55); }
-/* PvP: pílula ao lado do auto ataque; verde e calma desligado, vermelha ligado */
-.pvpb { position: absolute; right: calc(var(--sar) + 134px); bottom: calc(var(--sab) + 244px); height: 38px; min-width: 64px; padding: 0 10px 0 8px; border-radius: 19px;
-  display: flex; align-items: center; gap: 4px; cursor: pointer; pointer-events: auto; color: #9fe0b4; background: var(--pan);
-  border: 1px solid rgba(127, 214, 160, .45); box-shadow: 0 4px 14px rgba(0, 0, 0, .45); transition: transform .07s, background .15s, border-color .15s; }
-.pvpb b { font-size: 12px; font-weight: 900; letter-spacing: .03em; }
-.pvpb small { font-size: 10px; font-weight: 800; text-transform: uppercase; opacity: .85; }
-.pvpb:active { transform: scale(.93); }
+/* PvP: botão redondo acima do painéis; verde e calma desligado, vermelho ligado */
+.pvpb { position: absolute; right: calc(var(--sar) + 17px); bottom: calc(var(--sab) + 296px); width: 48px; height: 48px; color: #9fe0b4; border-color: rgba(127, 214, 160, .45); }
 .pvpb.on { color: #ffd0cc; background: linear-gradient(180deg, rgba(150, 34, 40, .92), rgba(84, 16, 22, .94)); border-color: rgba(255, 110, 110, .7);
   box-shadow: 0 0 0 3px rgba(226, 57, 79, .22), 0 4px 14px rgba(0, 0, 0, .5); }
 /* senha: mostrar/esconder */
@@ -461,14 +456,14 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 5px; border-radius: 5
   .ab.s3 { right: 23px; bottom: 135px; width: 56px; height: 56px; }
   .pocoes { right: calc(var(--sar) + 204px); } .pocoes .ab { width: 50px; height: 50px; }
   .hub { bottom: calc(var(--sab) + 212px); } .atqm { bottom: calc(var(--sab) + 216px); right: calc(var(--sar) + 72px); }
-  .pvpb { bottom: calc(var(--sab) + 221px); right: calc(var(--sar) + 124px); }
+  .pvpb { bottom: calc(var(--sab) + 274px); }
   .mini { width: 92px; height: 92px; } .topo { top: calc(var(--sat) + 112px); }
   .voc img, .voc .ph { width: 80px; height: 80px; }
 }
 @media (max-height: 560px) {
   .acao { transform: scale(.88); transform-origin: 100% 100%; }
   .hub { bottom: calc(var(--sab) + 206px); } .atqm { bottom: calc(var(--sab) + 210px); }
-  .pvpb { bottom: calc(var(--sab) + 215px); }
+  .pvpb { bottom: calc(var(--sab) + 268px); }
 }
 @media (prefers-reduced-motion: reduce) { * { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
 
